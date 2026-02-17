@@ -1,0 +1,6 @@
+torch
+transformers
+sentence-transformers
+qdrant-client
+boto3
+pypdf
