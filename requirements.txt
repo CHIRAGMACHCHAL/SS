@@ -4,3 +4,16 @@ sentence-transformers
 qdrant-client
 boto3
 pypdf
+
+# requirements.txt (exact versions recommend kar raha hoon taaki future mein compatible rahe)
+
+asyncpg==0.29.0               # PostgreSQL async driver (conversation_memory.py mein use)
+redis==5.0.8                  # redis.asyncio (fast cache ke liye)
+qdrant-client==1.11.3         # Qdrant vector DB client
+sentence-transformers==3.1.1  # Embeddings (all-mpnet-base-v2 model)
+pypdf==5.0.1                  # PDF reading
+boto3==1.35.24                # AWS S3 client
+botocore==1.35.24             # boto3 ke saath aata hai (NoCredentialsError ke liye)
+torch==2.4.1                  # sentence-transformers ke andar chahiye (CPU version safe)
+numpy==1.26.4                 # sentence-transformers ke andar dependency
+transformers==4.44.2          # sentence-transformers ke andar (huggingface)

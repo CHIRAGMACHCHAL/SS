@@ -13,6 +13,7 @@ from llm.llm_engine import llm, generate as llm_generate
 import hashlib
 import boto3
 from botocore.exceptions import NoCredentialsError
+from memory.conversation_memory import ConversationMemory
 
 # =========================
 # PUBLIC TIER CONFIGURATION
@@ -2421,7 +2422,8 @@ def main():
 
     question = "How to report The Prince ?"
 
-    
+    memory_layer = ConversationMemory()  
+    conversation_id = str(uuid.uuid4())  
 
     # ================================
     # LAYER 1 : INTENT DECOMPOSITION
@@ -2534,6 +2536,23 @@ def main():
     
     logging.info(f"[Adaptive Queries] → {adaptive_queries}")
     
+    #--------------------------------------------------------------------------
+        # ... AdaptiveQueryExpansionEngine ke baad (logging.info(f"[Adaptive Queries] → {adaptive_queries}") ke baad) ...
+
+    # ──────────────── Layer 8: Fetch previous conversation history ────────────────
+    history = await memory_layer.get_conversation_history(
+        conversation_id=conversation_id,
+        tier=SYSTEM_MODE
+    )
+
+    # History ko current context mein mix kar do (very useful for continuity)
+    if history.strip():
+        mutated_question = f"Previous conversation context:\n{history}\n\nCurrent question: {mutated_question}"
+
+    # Optional: History ko mutated_question mein mix kar sakte ho
+    # mutated_question = f"{history}\n\nCurrent query: {mutated_question}"
+    #----------------------------------
+
     # ===== Layer-2 → Router Bridge (Blueprint Compliant Fix) =====
     try:
         # Agar adaptive_queries Dictionary hai (Best for AGI Blueprint)
@@ -3122,6 +3141,17 @@ Question:
 
     # print("Response:")
     # print(final_response)
+    #------------------------------
+    
+
+    # ──────────────── Layer 8: Fetch previous conversation history ────────────────
+    history = await memory_layer.get_conversation_history(
+        conversation_id=conversation_id,
+        tier=SYSTEM_MODE
+    )
+
+
+    #---------------------
 
 
 
