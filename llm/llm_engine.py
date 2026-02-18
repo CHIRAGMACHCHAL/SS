@@ -1,4 +1,4 @@
-# llm/llm_engine.py - Layer 7: LLM Organ (Agnostic Engine)
+# llm/llm_engine.py - Layer 7: LLM Organ (Final - Tera detailed code + Production ready)
 
 import os
 import torch
@@ -6,28 +6,30 @@ from typing import Dict, Any
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # =========================
-# CONFIG FROM .env / BILLING
+# CONFIG FROM .env / BILLING (Production ready)
 # =========================
 MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-1B")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.3"))
 
 # =========================
-# BASE LLM INTERFACE (Agnostic)
+# BASE LLM INTERFACE (Agnostic) - Tera code
 # =========================
 class BaseLLMEngine:
     """
-    Blueprint: Brain ko sirf interface pata hona chahiye
-    Koi bhi provider ho, same invoke method
+    Blueprint rule:
+    - Brain never knows WHICH engine
+    - Brain only knows WHAT it can do
     """
     def invoke(self, prompt: str) -> str:
-        raise NotImplementedError("Implement invoke() in child class")
+        raise NotImplementedError("LLM engine must implement invoke()")
 
 # =========================
-# TRANSFORMERS ENGINE (Current)
+# TRANSFORMERS ENGINE - Tera detailed code
 # =========================
 class TransformersEngine(BaseLLMEngine):
     """
-    Current local engine - tera original code
+    LangChain-free, Ollama-free LLM runtime
+    Output: plain string (same as before)
     """
     def __init__(self, model_name: str, temperature: float = 0.3):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -38,7 +40,7 @@ class TransformersEngine(BaseLLMEngine):
         )
         self.temperature = temperature
 
-    def invoke(self, prompt: str) -> str:
+    def generate(self, prompt: str) -> str:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
         outputs = self.model.generate(
             **inputs,
@@ -46,15 +48,21 @@ class TransformersEngine(BaseLLMEngine):
             temperature=self.temperature,
             do_sample=True
         )
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return self.tokenizer.decode(
+            outputs[0],
+            skip_special_tokens=True
+        )
+    # 🔒 compatibility for training engine
+    def invoke(self, prompt: str) -> str:
+        return self.generate(prompt)
 
 # =========================
-# LLM ENGINE REGISTRY (Agnostic Switch)
+# LLM ENGINE REGISTRY - Tera code
 # =========================
 class LLMEngineRegistry:
     """
-    Future mein provider switch yahin se
-    aaj transformers, kal vLLM, parso OpenAI
+    Central authority for engine selection
+    Brain NEVER instantiates engines directly
     """
     _registry = {}
 
@@ -65,28 +73,24 @@ class LLMEngineRegistry:
     @classmethod
     def create(cls, name: str, **kwargs):
         if name not in cls._registry:
-            raise ValueError(f"Engine '{name}' not registered")
+            raise ValueError(f"LLM Engine '{name}' not registered")
         return cls._registry[name](**kwargs)
 
 # Register current engine
 LLMEngineRegistry.register("transformers", TransformersEngine)
 
-# Default instance (Layer 7 ka main object)
-llm_organ = LLMEngineRegistry.create(
-    "transformers",
-    model_name=MODEL_NAME,
-    temperature=TEMPERATURE
-)
+# Default instance
 
+llm = LLMEngineRegistry.create("transformers", model_name=MODEL_NAME, temperature=TEMPERATURE)
 # =========================
-# Public Interface for Brain/Orchestrator
+# Public Interface for Brain/Orchestrator (Production ready)
 # =========================
 def generate(prompt: str) -> str:
-    """Brain yeh function call karega"""
-    return llm_organ.invoke(prompt)
+    """Brain ya Orchestrator isse call karega"""
+    return llm.invoke(prompt)
 
 def get_current_config() -> Dict[str, Any]:
-    """Orchestrator ko config batane ke liye"""
+    """Orchestrator/Billing ke liye config"""
     return {
         "provider": "transformers",
         "model_name": MODEL_NAME,

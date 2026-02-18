@@ -9,8 +9,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 import uuid
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
+from llm.llm_engine import llm, generate as llm_generate
 import hashlib
 import boto3
 from botocore.exceptions import NoCredentialsError
@@ -106,102 +105,6 @@ logging.basicConfig(
 # Constants
 # DATA_DIR = r"D:\OLLAMA\data"
 
-#---------------------------------------------------------------------
-# =========================
-# SECTION 6.1 — UNIVERSAL LLM INTERFACE
-# =========================
-
-class BaseLLMEngine:
-    """
-    Blueprint rule:
-    - Brain never knows WHICH engine
-    - Brain only knows WHAT it can do
-    """
-
-    def invoke(self, prompt: str) -> str:
-        raise NotImplementedError("LLM engine must implement invoke()")
-
-
-#-------------------------------------------------------------
-class TransformersEngine(BaseLLMEngine):
-    """
-    LangChain-free, Ollama-free LLM runtime
-    Output: plain string (same as before)
-    """
-
-    def __init__(self, model_name: str, temperature: float = 0.3):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            device_map="auto"
-        )
-        self.temperature = temperature
- 
-
-    def generate(self, prompt: str) -> str:
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-
-        outputs = self.model.generate(
-            **inputs,
-            max_new_tokens=512,
-            temperature=self.temperature,
-            do_sample=True
-        )
-
-        return self.tokenizer.decode(
-            outputs[0],
-            skip_special_tokens=True
-        )
-
-    # 🔒 compatibility for training engine
-    def invoke(self, prompt: str) -> str:
-        return self.generate(prompt)
-
-
-# =========================
-# SECTION 6.2 — LLM ENGINE REGISTRY
-# =========================
-
-class LLMEngineRegistry:
-    """
-    Central authority for engine selection
-    Brain NEVER instantiates engines directly
-    """
-
-    _registry = {}
-
-    @classmethod
-    def register(cls, name: str, engine_cls):
-        cls._registry[name] = engine_cls
-
-    @classmethod
-    def create(cls, name: str, **kwargs):
-        if name not in cls._registry:
-            raise ValueError(f"LLM Engine '{name}' not registered")
-        return cls._registry[name](**kwargs)
-
-
-MODEL_NAME = "meta-llama/Llama-3.2-1B"
-# llm = TransformersEngine(
-#     model_name=MODEL_NAME,
-#     temperature=0.3
-# )        
-
-# =========================
-# SECTION 6.3 — ENGINE REGISTRATION
-# =========================
-
-LLMEngineRegistry.register(
-    "transformers",
-    TransformersEngine
-)
-
-llm = LLMEngineRegistry.create(
-    "transformers",
-    model_name=MODEL_NAME,
-    temperature=0.3
-)
 
 # ===== SYSTEM MODE =====
 SYSTEM_MODE = "public"   # "public" or "jarvis"
@@ -2513,8 +2416,6 @@ def main():
 
     # Initialize the language model
           
-    llm = TransformersEngine(model_name=MODEL_NAME, temperature =0.3)
-    # llm = ChatOllama(model=MODEL_NAME)
 
     chain = create_chain(llm)
 
@@ -2825,7 +2726,7 @@ Use the following memory context to answer carefully:
 Question:
 {question}
 """
-            res = llm.invoke(final_prompt).content
+            res = llm_generate(final_prompt)
         else:
             res = "No relevant memory found."
 
@@ -2988,10 +2889,10 @@ Question:
 {question}
 """
 
-        res = llm.invoke(reasoning_prompt).content
+        res = llm_generate(reasoning_prompt)
     
     if 'res' not in locals():
-        res = llm.invoke(question).content
+        res = llm_generate(question)
 
        
     
@@ -3133,7 +3034,7 @@ Question:
     Previous Answer:
     {res}
     """
-        res = llm.invoke(retry_prompt).content
+        res = llm_generate(retry_prompt)
 
     cognitive_profile["confidence"] *= 0.95
     
