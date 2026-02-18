@@ -1,4 +1,4 @@
-# llm/organ.py - Layer 7: LLM Organ (Agnostic Engine)
+# llm/llm_engine.py - Layer 7: LLM Organ (Agnostic Engine)
 
 import os
 import torch
