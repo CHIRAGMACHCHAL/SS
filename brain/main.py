@@ -2401,12 +2401,14 @@ class DeploymentGovernor:
         return response
 
 
-
-
+   
 #========================================================================================================================
 #============================================================================================================================
     
-def main():
+async def main():
+    
+
+
     training_result = training_controller.maybe_train(
         dataset_path="./training/datasets/sample.jsonl"
     )
@@ -2424,6 +2426,9 @@ def main():
 
     memory_layer = ConversationMemory()  
     conversation_id = str(uuid.uuid4())  
+
+     # Layer 8 connections initialize (async)
+    await memory_layer.init_connections()
 
     # ================================
     # LAYER 1 : INTENT DECOMPOSITION
@@ -2537,21 +2542,7 @@ def main():
     logging.info(f"[Adaptive Queries] → {adaptive_queries}")
     
     #--------------------------------------------------------------------------
-        # ... AdaptiveQueryExpansionEngine ke baad (logging.info(f"[Adaptive Queries] → {adaptive_queries}") ke baad) ...
-
-    # ──────────────── Layer 8: Fetch previous conversation history ────────────────
-    history = await memory_layer.get_conversation_history(
-        conversation_id=conversation_id,
-        tier=SYSTEM_MODE
-    )
-
-    # History ko current context mein mix kar do (very useful for continuity)
-    if history.strip():
-        mutated_question = f"Previous conversation context:\n{history}\n\nCurrent question: {mutated_question}"
-
-    # Optional: History ko mutated_question mein mix kar sakte ho
-    # mutated_question = f"{history}\n\nCurrent query: {mutated_question}"
-    #----------------------------------
+       
 
     # ===== Layer-2 → Router Bridge (Blueprint Compliant Fix) =====
     try:
@@ -2648,6 +2639,18 @@ def main():
      
     # ab system janta hai :
                        #1. hidden assumptions | 2.missing context | 3. user ne jo bola,wo bhi  
+    # ──────────────── Layer 8: Fetch previous conversation history ────────────────
+    history = await memory_layer.get_conversation_history(
+        conversation_id=conversation_id,
+        tier=SYSTEM_MODE
+    )
+
+    # History ko current context mein mix kar do (very useful for continuity)
+    if history.strip():
+        mutated_question = f"Previous conversation context:\n{history}\n\nCurrent question: {mutated_question}"
+
+    # Optional: History ko mutated_question mein mix kar sakte ho
+    # mutated_question = f"{history}\n\nCurrent query: {mutated_question}"
 
  
     # ===== Phase 3.6 : FINAL KNOWLEDGE ROUTING (ONLY CALL) =====
@@ -3142,15 +3145,25 @@ Question:
     # print("Response:")
     # print(final_response)
     #------------------------------
+
+
     
 
-    # ──────────────── Layer 8: Fetch previous conversation history ────────────────
-    history = await memory_layer.get_conversation_history(
+    # ──────────────── Layer 8: SAVE conversation (Important) ────────────────
+    await memory_layer.update_conversation(
         conversation_id=conversation_id,
-        tier=SYSTEM_MODE
+        question=question,
+        answer=final_response,
+        tier=SYSTEM_MODE,
+        project_context="Vimana Project" if SYSTEM_MODE == "jarvis" else None
     )
 
+    # Optional debug
+    project_ctx = await memory_layer.get_project_context(conversation_id)
+    if project_ctx and SYSTEM_MODE == "jarvis":
+        logging.info(f"[Jarvis Project Reminder] {project_ctx}")
 
+   
     #---------------------
 
 
@@ -3195,5 +3208,5 @@ Question:
 
 
 if __name__ == "__main__":
-    main()
-
+    import asyncio
+    asyncio.run(main())

@@ -8,6 +8,9 @@ from typing import Dict, List, Optional
 import asyncpg
 import redis.asyncio as redis
 from .graph_sync import sync_to_memory_graph  # Layer 4 hook
+from llm.llm_engine import generate as llm_generate   # ← yeh add karo
+# graph_sync abhi nahi bana toh comment kar do (baad mein uncomment kar denge)
+# from .graph_sync import sync_to_memory_graph
 
 class ConversationMemory:
     """
@@ -21,7 +24,7 @@ class ConversationMemory:
     def __init__(self):
         self.pg_pool = None
         self.redis = None
-        self.init_connections()
+        
 
     async def init_connections(self):
         self.pg_pool = await asyncpg.create_pool(os.getenv("DATABASE_URL"))
