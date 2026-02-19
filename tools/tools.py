@@ -1,3 +1,5 @@
+#tools/tools.py - Layer 9: Tool & Agency Layer (Production ready)
+
 import os
 import json
 from typing import Dict, Any, List, Optional

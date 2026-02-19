@@ -14,6 +14,7 @@ import hashlib
 import boto3
 from botocore.exceptions import NoCredentialsError
 from memory.conversation_memory import ConversationMemory
+from memory.graph_sync import MemoryGraph
 
 # =========================
 # PUBLIC TIER CONFIGURATION
@@ -2427,6 +2428,12 @@ async def main():
     memory_layer = ConversationMemory()  
     conversation_id = str(uuid.uuid4())  
 
+    # Layer 4 Full Memory Graph (Blueprint ka REAL BRAIN - Persistent + Tier-aware)
+    memory_graph_full = MemoryGraph()
+    await memory_graph_full.init_connections()
+
+    # Layer 8 + Layer 4 combined initialization complete
+
      # Layer 8 connections initialize (async)
     await memory_layer.init_connections()
 
@@ -3156,6 +3163,13 @@ Question:
         answer=final_response,
         tier=SYSTEM_MODE,
         project_context="Vimana Project" if SYSTEM_MODE == "jarvis" else None
+    )
+
+        # Layer 4 Graph Sync - Concepts & Relations permanently save
+    await memory_graph_full.sync_to_memory_graph(
+        question=question,
+        answer=final_response,
+        tier=SYSTEM_MODE
     )
 
     # Optional debug

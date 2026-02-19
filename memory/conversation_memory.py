@@ -7,10 +7,9 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import asyncpg
 import redis.asyncio as redis
-from .graph_sync import sync_to_memory_graph  # Layer 4 hook
+from .graph_sync import MemoryGraph  # Layer 4 hook
 from llm.llm_engine import generate as llm_generate   # ← yeh add karo
-# graph_sync abhi nahi bana toh comment kar do (baad mein uncomment kar denge)
-# from .graph_sync import sync_to_memory_graph
+from .storage import MemoryStorageLayer   
 
 class ConversationMemory:
     """
@@ -22,13 +21,17 @@ class ConversationMemory:
     """
 
     def __init__(self):
+        self.storage = MemoryStorageLayer()
+        self.graph = MemoryGraph()
         self.pg_pool = None
         self.redis = None
         
-
     async def init_connections(self):
-        self.pg_pool = await asyncpg.create_pool(os.getenv("DATABASE_URL"))
-        self.redis = await redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        """Storage layer se saare connections initialize"""
+        await self.storage.init_connections()          # ← yahan se aa raha hai
+        await self.graph.init_connections()
+        self.pg_pool = self.storage.pg_pool
+        self.redis = self.storage.redis_client
 
     async def get_conversation_history(self, conversation_id: str, tier: str = "public", limit: int = 10) -> str:
         """Get recent messages (Jarvis mein zyada deep history)"""
@@ -84,7 +87,12 @@ class ConversationMemory:
             )
 
         # Layer 4 Memory Graph sync (concept + relation update)
-        await sync_to_memory_graph(question, answer, tier)
+        await self.graph.sync_to_memory_graph(
+            question=question,
+            answer=answer,
+            tier=tier
+        )
+        #-----------------------------
 
         # Jarvis special: identity reinforcement
         if tier == "jarvis":
