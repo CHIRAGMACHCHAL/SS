@@ -1,3 +1,5 @@
+# custom_api.py - Layer 2: Custom API Layer (Production ready)
+
 import socket
 import threading
 import time

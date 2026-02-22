@@ -1,3 +1,4 @@
+# auth/auth.py - Layer 3: Authentication Layer (Production ready)
 import hashlib
 import hmac
 import time

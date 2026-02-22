@@ -33,8 +33,13 @@ class ConversationMemory:
         self.pg_pool = self.storage.pg_pool
         self.redis = self.storage.redis_client
 
-    async def get_conversation_history(self, conversation_id: str, tier: str = "public", limit: int = 10) -> str:
+    async def get_conversation_history(self, conversation_id: str, email: str = None, limit: int = 10) -> str:
         """Get recent messages (Jarvis mein zyada deep history)"""
+        if email is None:
+            email = "chirag@example.com"
+        config = await self.storage.get_storage_config(email)
+        tier = config["tier"]
+      
         if tier == "jarvis":
             limit = 100  # Jarvis ko zyada yaad rahega
 
@@ -57,10 +62,15 @@ class ConversationMemory:
                                  conversation_id: str,
                                  question: str,
                                  answer: str,
-                                 tier: str = "public",
+                                 email: str = None,
                                  project_context: Optional[str] = None):
         """Update history + sync to Memory Graph + Jarvis identity reinforcement"""
         timestamp = datetime.utcnow().isoformat()
+        if email is None:
+            email = "chirag@example.com"
+        config = await self.storage.get_storage_config(email)
+        tier = config["tier"]
+
         entry = f"[{timestamp}] User ({tier}): {question}\nAssistant: {answer}\n"
 
         if project_context:
@@ -90,7 +100,7 @@ class ConversationMemory:
         await self.graph.sync_to_memory_graph(
             question=question,
             answer=answer,
-            tier=tier
+            email=email
         )
         #-----------------------------
 
@@ -109,9 +119,12 @@ class ConversationMemory:
         identity_line = llm_generate(identity_prompt)  # short call
         await self.redis.append(f"identity:{conv_id}", f"[Identity] {identity_line}\n")
 
-    async def search_memory(self, query: str, tier: str = "public", k: int = 5) -> str:
+    async def search_memory(self, query: str, email: str = None, k: int = 5) -> str:
         """Semantic search across history (Jarvis mein zyada deep)"""
-        if tier == "jarvis":
+        if email is None:
+            email = "chirag@example.com"
+        config = await self.storage.get_storage_config(email)
+        if config["tier"] == "jarvis":
             k = 15  # Jarvis ko zyada context milega
 
         # Redis se fast short-term

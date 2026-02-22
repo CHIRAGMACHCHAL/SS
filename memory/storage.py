@@ -6,6 +6,7 @@ import redis.asyncio as redis
 from qdrant_client import QdrantClient
 from typing import Dict, Any, List, Optional
 import uuid
+from datetime import datetime
 
 class MemoryStorageLayer:
     """
@@ -29,6 +30,17 @@ class MemoryStorageLayer:
         self.redis_client = None
         self.qdrant = None
 
+    async def get_storage_config(self, email: str) -> Dict[str, Any]:
+        """BillingLayer se pura config laata hai"""
+        config = BillingLayer.generate_config(email)
+        return {
+            "tier": config["tier"],
+            "collection": config["collection"],
+            "bucket": config.get("bucket", "mini-agi-public-pdfs"),
+            "prefix": config.get("prefix", "documents/"),
+            "allow_long_term_memory": config.get("long_term_memory", False)
+        }
+
     async def init_connections(self):
         """Async connections initialize"""
         self.pg_pool = await asyncpg.create_pool(os.getenv("DATABASE_URL"))
@@ -38,29 +50,40 @@ class MemoryStorageLayer:
             api_key=os.getenv("QDRANT_API_KEY")
         )
 
-    async def get_collection_name(self, tier: str) -> str:
-        """Tier ke hisaab se sahi collection"""
-        if tier == "jarvis":
-            return self.jarvis_collection
-        return self.public_collection
+    # async def get_collection_name(self, tier: str) -> str:
+    #     """Tier ke hisaab se sahi collection"""
+    #     if tier == "jarvis":
+    #         return self.jarvis_collection
+    #     return self.public_collection
 
-    async def get_bucket_name(self, tier: str) -> str:
-        """Tier ke hisaab se sahi S3 bucket"""
-        if tier == "jarvis":
-            return self.jarvis_bucket
-        return self.public_bucket
+    # async def get_bucket_name(self, tier: str) -> str:
+    #     """Tier ke hisaab se sahi S3 bucket"""
+    #     if tier == "jarvis":
+    #         return self.jarvis_bucket
+    #     return self.public_bucket
 
     # ================== Conversation History ==================
-    async def get_conversation_history(self, conversation_id: str) -> str:
+    async def get_conversation_history(self, conversation_id: str, email: str) -> str:
+        config = await self.get_storage_config(email)
+        limit = 100 if config["allow_long_term_memory"] else 10
         async with self.pg_pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT messages FROM conversations WHERE id = $1",
-                conversation_id
+            rows = await conn.fetch(
+                """
+                SELECT messages FROM conversations
+                WHERE id = $1
+                ORDER BY updated_at DESC
+                LIMIT $2
+                """,
+                conversation_id,
+                limit
             )
-            return row['messages'] if row else ""
+            if rows:
+                return "\n".join(row["messages"] for row in rows)
+            return ""
 
-    async def update_conversation_history(self, conversation_id: str, question: str, answer: str):
-        new_entry = f"User: {question}\nAssistant: {answer}\n"
+    async def update_conversation_history(self, conversation_id: str, question: str, answer: str, email:str):
+        config = await self.get_storage_config(email)
+        new_entry = f"[{datetime.utcnow().isoformat()}] User ({config['tier']}): {question}\nAssistant: {answer}\n"
         async with self.pg_pool.acquire() as conn:
             await conn.execute(
                 """
@@ -74,17 +97,19 @@ class MemoryStorageLayer:
             )
 
     # ================== Vector Search (Brain se call hoga) ==================
-    async def similarity_search(self, query: str, tier: str, k: int = 8):
+    async def similarity_search(self, query: str, email: str, k: int = 8):
         """Brain yeh function call karega"""
-        collection = await self.get_collection_name(tier)
+        config = await self.get_storage_config(email)
+        collection = config["collection"]
         # Yahan tera existing QdrantVectorStore logic call hoga (brain se)
         # No duplication - brain ka code reuse
         return []  # Placeholder - real call brain se hoga
 
-    async def store_document_chunks(self, chunks: List, tier: str):
+    async def store_document_chunks(self, chunks: List, email: str):
         """Brain yeh function call karega PDF chunks store karne ke liye"""
-        bucket = await self.get_bucket_name(tier)
-        collection = await self.get_collection_name(tier)
+        config = await self.get_storage_config(email)
+        bucket = config["bucket"]
+        collection = config["collection"]
         # Yahan tera existing create_or_load_vector_db logic call hoga
         # No duplication
         pass

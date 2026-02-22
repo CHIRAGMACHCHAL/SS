@@ -1,3 +1,5 @@
+# monitoring/monitoring.py - Layer 10: Monitoring & Logging Layer (Production ready)
+
 import os
 import time
 import json

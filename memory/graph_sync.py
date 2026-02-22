@@ -12,6 +12,7 @@ import redis.asyncio as redis
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from collections import defaultdict
+from .storage import MemoryStorageLayer  # Storage layer se config aur connections ke liye hook
 
 EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
 embedder = SentenceTransformer(EMBEDDING_MODEL)
@@ -61,16 +62,22 @@ class MemoryGraph:
         self.redis = None
         self.nodes: Dict[str, MemoryGraphNode] = {}      # in-memory cache
         self.edges: List[MemoryGraphEdge] = []           # in-memory cache
+        self.storage = MemoryStorageLayer()              # Storage layer se config aur connections ke liye hook
 
     async def init_connections(self):
         """PostgreSQL + Redis connect (storage layer se aa sakta hai)"""
         self.pg_pool = await asyncpg.create_pool(os.getenv("DATABASE_URL"))
         self.redis = await redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
 
-    async def _get_or_create_node(self, concept: str, tier: str = "public") -> MemoryGraphNode:
+    async def _get_or_create_node(self, concept: str, email: str = None) -> MemoryGraphNode:
         """Concept node banao ya fetch karo"""
         concept = concept.lower().strip()
-        cache_key = f"node:{tier}:{concept}"
+        
+        if email is None:
+            email = "chirag@example.com"  # default fallback
+            config = await self.storage.get_storage_config(email)  # storage se config le lo
+            tier = config["tier"]
+        cache_key = f"node:{tier}:{concept}"    
 
         # Redis se fast check
         cached = await self.redis.get(cache_key)
@@ -130,10 +137,15 @@ class MemoryGraph:
                     source_id, target_id, weight, relation_type
                 )
 
-    async def sync_to_memory_graph(self, question: str, answer: str, tier: str = "public"):
+    async def sync_to_memory_graph(self, question: str, answer: str, email: str = None):
         """
         Phase 6 + Conversation hook: Question + Answer se concepts + relations banao
         """
+        if email is None:
+            email = "chirag@example.com"
+        config = await self.storage.get_storage_config(email)
+        tier = config["tier"]
+
         # Text combine karo
         text = f"{question} {answer}"
         words = [w.lower().strip() for w in text.split() if len(w) > 4]
@@ -168,10 +180,15 @@ class MemoryGraph:
 
         print(f"[Layer 4 Sync] → {len(top_concepts)} concepts, {len(top_concepts)*(len(top_concepts)-1)//2} edges added/updated")
 
-    async def expand_query_with_graph(self, query: str, tier: str = "public", max_related: int = 5) -> str:
+    async def expand_query_with_graph(self, query: str, email: str = None, max_related: int = 5) -> str:
         """
         Layer 2 / Layer 3 hook: Query ko graph se expand karo
         """
+        if email is None:
+            email = "chirag@example.com"
+        config = await self.storage.get_storage_config(email)
+        tier = config["tier"]
+
         words = [w.lower().strip() for w in query.split() if len(w) > 4]
         if not words:
             return query
@@ -203,8 +220,13 @@ class MemoryGraph:
 
         return " ".join(set(expanded))  # unique rakho
 
-    async def get_related_concepts(self, concept: str, tier: str = "public", limit: int = 8) -> List[str]:
+    async def get_related_concepts(self, concept: str, email: str = None, limit: int = 8) -> List[str]:
         """Debug / Jarvis ke liye"""
+        if email is None:
+            email = "chirag@example.com"
+        config = await self.storage.get_storage_config(email)
+        tier = config["tier"]
+
         node = await self._get_or_create_node(concept, tier)
         if not node:
             return []

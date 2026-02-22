@@ -1,3 +1,4 @@
+# billing/billing.py - Layer 4: Billing & Subscription Layer (Production ready)
 import os
 from typing import Dict, Any
 
