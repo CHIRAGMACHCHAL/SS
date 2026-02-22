@@ -2407,7 +2407,23 @@ class DeploymentGovernor:
 #============================================================================================================================
     
 async def main(question: str, config: Dict[str, Any]):
-    
+    """  
+    AGI Brain - Pure Intelligence Layer  
+      
+    Args:  
+        question: User query  
+        config: Tier configuration from BillingLayer  
+            - tier: str (free/paid/ultra_paid/business_small/enterprise/jarvis)  
+            - max_docs: int  
+            - deep_reasoning: bool  
+            - use_emergent_concepts: bool  
+            - collection: str  
+            - allowed_tools: list  
+            - max_tokens: int  
+    """  
+    # Extract mode from config  
+    tier = config["tier"]  
+    mode = "jarvis" if tier == "jarvis" else "public"
 
 
     training_result = training_controller.maybe_train(
