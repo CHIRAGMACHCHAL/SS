@@ -1,3 +1,4 @@
+#orchestrator/orchestrator.py Orchestrator Layer - Production entry point, ties everything together
 import os
 import time
 from typing import Dict, Any

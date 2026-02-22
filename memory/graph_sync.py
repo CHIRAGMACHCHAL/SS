@@ -77,6 +77,10 @@ class MemoryGraph:
             email = "chirag@example.com"  # default fallback
             config = await self.storage.get_storage_config(email)  # storage se config le lo
             tier = config["tier"]
+
+        else:
+            config = await self.storage.get_storage_config(email)
+            tier = config["tier"] 
         cache_key = f"node:{tier}:{concept}"    
 
         # Redis se fast check

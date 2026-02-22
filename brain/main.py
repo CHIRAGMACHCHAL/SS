@@ -15,34 +15,37 @@ import boto3
 from botocore.exceptions import NoCredentialsError
 from memory.conversation_memory import ConversationMemory
 from memory.graph_sync import MemoryGraph
+from billing.billing import BillingLayer
 
-# =========================
-# PUBLIC TIER CONFIGURATION
-# =========================
+user_config = BillingLayer.generate_config(user_email)
 
-PUBLIC_TIER = "free"   # "free" | "pro" | "ultra"
+# # =========================
+# # PUBLIC TIER CONFIGURATION
+# # =========================
 
-def apply_public_tier_limits(cognitive_profile: dict) -> dict:
+# PUBLIC_TIER = "free"   # "free" | "pro" | "ultra"
+
+# def apply_public_tier_limits(cognitive_profile: dict) -> dict:
     
-    if PUBLIC_TIER == "free":
-        cognitive_profile["deep_reasoning"] = False
-        cognitive_profile["use_emergent_concepts"] = False
-        cognitive_profile["max_docs"] = 4
-        cognitive_profile["query_complexity"] = "low"
+#     if PUBLIC_TIER == "free":
+#         cognitive_profile["deep_reasoning"] = False
+#         cognitive_profile["use_emergent_concepts"] = False
+#         cognitive_profile["max_docs"] = 4
+#         cognitive_profile["query_complexity"] = "low"
     
-    elif PUBLIC_TIER == "pro":
-        cognitive_profile["deep_reasoning"] = False
-        cognitive_profile["use_emergent_concepts"] = True
-        cognitive_profile["max_docs"] = 8
-        cognitive_profile["query_complexity"] = "normal"
+#     elif PUBLIC_TIER == "pro":                                                        yyyyyyyyyyy
+#         cognitive_profile["deep_reasoning"] = False
+#         cognitive_profile["use_emergent_concepts"] = True
+#         cognitive_profile["max_docs"] = 8
+#         cognitive_profile["query_complexity"] = "normal"
     
-    elif PUBLIC_TIER == "ultra":
-        cognitive_profile["deep_reasoning"] = True
-        cognitive_profile["use_emergent_concepts"] = True
-        cognitive_profile["max_docs"] = 12
-        cognitive_profile["query_complexity"] = "high"
+#     elif PUBLIC_TIER == "ultra":
+#         cognitive_profile["deep_reasoning"] = True
+#         cognitive_profile["use_emergent_concepts"] = True
+#         cognitive_profile["max_docs"] = 12
+#         cognitive_profile["query_complexity"] = "high"
     
-    return cognitive_profile
+#     return cognitive_profile
 
 # =========================
 # PRODUCTION QDRANT CONFIG

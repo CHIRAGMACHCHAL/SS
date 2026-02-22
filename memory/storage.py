@@ -7,6 +7,7 @@ from qdrant_client import QdrantClient
 from typing import Dict, Any, List, Optional
 import uuid
 from datetime import datetime
+from billing.billing import BillingLayer  # Billing config ke liye
 
 class MemoryStorageLayer:
     """
@@ -17,13 +18,6 @@ class MemoryStorageLayer:
     """
 
     def __init__(self):
-        # Buckets (tere blueprint ke hisaab se)
-        self.public_bucket = "mini-agi-public-pdfs"
-        self.jarvis_bucket = "mini-agi-jarvis-pdfs"
-
-        # Qdrant Collections (alag-alag)
-        self.public_collection = "public_core"
-        self.jarvis_collection = "jarvis_private"
 
         # Connections
         self.pg_pool = None
@@ -49,18 +43,6 @@ class MemoryStorageLayer:
             url=os.getenv("QDRANT_URL"),
             api_key=os.getenv("QDRANT_API_KEY")
         )
-
-    # async def get_collection_name(self, tier: str) -> str:
-    #     """Tier ke hisaab se sahi collection"""
-    #     if tier == "jarvis":
-    #         return self.jarvis_collection
-    #     return self.public_collection
-
-    # async def get_bucket_name(self, tier: str) -> str:
-    #     """Tier ke hisaab se sahi S3 bucket"""
-    #     if tier == "jarvis":
-    #         return self.jarvis_bucket
-    #     return self.public_bucket
 
     # ================== Conversation History ==================
     async def get_conversation_history(self, conversation_id: str, email: str) -> str:
