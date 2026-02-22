@@ -15,9 +15,6 @@ import boto3
 from botocore.exceptions import NoCredentialsError
 from memory.conversation_memory import ConversationMemory
 from memory.graph_sync import MemoryGraph
-from billing.billing import BillingLayer
-
-user_config = BillingLayer.generate_config(user_email)
 
 # # =========================
 # # PUBLIC TIER CONFIGURATION
@@ -33,9 +30,9 @@ user_config = BillingLayer.generate_config(user_email)
 #         cognitive_profile["max_docs"] = 4
 #         cognitive_profile["query_complexity"] = "low"
     
-#     elif PUBLIC_TIER == "pro":                                                        yyyyyyyyyyy
+#     elif PUBLIC_TIER == "pro":
 #         cognitive_profile["deep_reasoning"] = False
-#         cognitive_profile["use_emergent_concepts"] = True
+#         cognitive_profile["use_emergent_concepts"] = True                                         yyyyyyyyyyyy
 #         cognitive_profile["max_docs"] = 8
 #         cognitive_profile["query_complexity"] = "normal"
     
@@ -54,8 +51,8 @@ user_config = BillingLayer.generate_config(user_email)
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 
-PUBLIC_COLLECTION = "public_core"
-JARVIS_COLLECTION = "jarvis_private"
+# PUBLIC_COLLECTION = "public_core"
+# JARVIS_COLLECTION = "jarvis_private"                                           yyyyyyyyyyyy
 # =========================
 # QDRANT CLOUD CLIENT (PERMANENT)
 # =========================
@@ -111,16 +108,16 @@ logging.basicConfig(
 # DATA_DIR = r"D:\OLLAMA\data"
 
 
-# ===== SYSTEM MODE =====
-SYSTEM_MODE = "public"   # "public" or "jarvis"
+# # ===== SYSTEM MODE =====
+# SYSTEM_MODE = "public"   # "public" or "jarvis"                                                      yyyyyyyyyyyy
 
 EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
 #-----------------------------------------------
 # VECTOR_STORE_NAME = "simple-rag"
-def get_collection_name(system_mode: str):
-    if system_mode == "jarvis":
-        return JARVIS_COLLECTION
-    return PUBLIC_COLLECTION
+# def get_collection_name(system_mode: str):
+#     if system_mode == "jarvis":                                                                   yyyyyyyyyyyy
+#         return JARVIS_COLLECTION
+#     return PUBLIC_COLLECTION
 #-------------------------------------------
 #-----------------------------------------------
 def download_pdfs_from_s3(bucket_name, prefix=""):
