@@ -16,7 +16,9 @@ vedic-agi/                      ← yeh root hai (GitHub pe yahi repo hai)
 ├── llm/                        ← Layer 7: LLM Organ
 │   └── llm_engine.py
 ├── memory/                     ← Layer 8: Memory & Storage
-│   └── db.py
+│   └── storage.py
+|   └── graph_sync.py
+|   └── conversation_memory.py
 ├── tools/                      ← Layer 9: Tool/Agency Layer
 │   └── tools.py
 ├── monitoring/                 ← Layer 10: Monitoring & Logging
