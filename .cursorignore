@@ -1,0 +1,10 @@
+venv/
+.git/
+__pycache__/
+*.log
+table(1).csv
+table.csv
+tools.csv
+.vscode
+chatgpt.PY
+b.py
