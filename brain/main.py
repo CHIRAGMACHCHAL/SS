@@ -14,7 +14,7 @@ import hashlib
 import boto3
 from botocore.exceptions import NoCredentialsError
 from memory.conversation_memory import ConversationMemory
-from memory.graph_sync import MemoryGraph
+from memory.graph_sync import MemoryGraph      
 
 # # =========================
 # # PUBLIC TIER CONFIGURATION
@@ -682,8 +682,8 @@ class MemoryGraphAdapter:
 # =========================
 # VECTOR DB + MEMORY GRAPH INIT
 # =========================
-vector_db = create_or_load_vector_db(None, system_mode=SYSTEM_MODE) #public ya jarvis
-memory_graph = MemoryGraphAdapter(vector_db)
+# NOTE: Vector DB & MemoryGraphAdapter are initialized inside the AGI brain
+# entrypoint based on the current mode/config (no global tier state).
 
 
 
