@@ -813,11 +813,6 @@ class ResponseStrategyEngine:
         """
         Decides HOW the answer should be framed
         Returns a response strategy dict
-
-        route: current cognitive route (memory/retrieval/reasoning)
-        intent: dict with 'state' (research/execution/conversation) and 'required_depth'
-        config: from billing layer, contains 'response_strategy_mode'
-        cognitive_profile: current cognitive profile (may be used later)
         """
 
         strategy = {
@@ -827,46 +822,234 @@ class ResponseStrategyEngine:
             "system_prompt": None
         }
 
-        strategy_mode = config.get("response_strategy_mode", "basic")
+        # Intent ko safely read karo — dict bhi aa sakta hai, string bhi
+        intent_value = intent.get("state", intent) if isinstance(intent, dict) else intent
 
-        # ===== JARVIS MODE =====
-        if strategy_mode == "advanced":  # jarvis mode
-            if intent == "research":
-                strategy.update({
-                    "style": "analytical",
-                    "structure": "sectioned",
-                    "verbosity": "high"
-                })
+        strategy_mode = config.get("response_strategy_mode", "basic") if config else "basic"
 
-            elif intent == "execution":
-                strategy.update({
-                    "style": "instructional",
-                    "structure": "steps",
-                    "verbosity": "high"
-                })
-
-            elif intent == "conversation":
-                strategy.update({
-                    "style": "casual",
-                    "structure": "free",
-                    "verbosity": "low"
-                })
-
-        # ===== PUBLIC MODE =====
-        else:
+        # ===== BASIC MODE (free tier) =====
+        if strategy_mode == "basic":
             if route == "retrieval":
                 strategy.update({
                     "style": "informative",
                     "structure": "concise",
                     "verbosity": "low"
                 })
-
             elif route == "reasoning":
                 strategy.update({
                     "style": "clear",
                     "structure": "step-lite",
                     "verbosity": "medium"
-                })        
+                })
+        
+        # ===== STANDARD MODE (paid tier) =====
+        elif strategy_mode == "standard":
+            if route == "retrieval":
+                strategy.update({
+                    "style": "informative",
+                    "structure": "concise",
+                    "verbosity": "medium"
+                })
+            elif route == "reasoning":
+                strategy.update({
+                    "style": "clear",
+                    "structure": "step-lite",
+                    "verbosity": "medium"
+                })
+            if intent_value == "research":
+                strategy.update({
+                    "style": "analytical",
+                    "structure": "sectioned",
+                    "verbosity": "medium"
+                })
+            elif intent_value == "conversation":
+                strategy.update({
+                    "style": "casual",
+                    "structure": "free",
+                    "verbosity": "low"
+                })
+        
+        # ===== ADVANCED MODE (ultra_paid) =====
+        elif strategy_mode == "advanced":
+            if route == "retrieval":
+                strategy.update({
+                    "style": "analytical",
+                    "structure": "sectioned",
+                    "verbosity": "medium"
+                })
+            elif route == "reasoning":
+                strategy.update({
+                    "style": "clear",
+                    "structure": "step-by-step",
+                    "verbosity": "medium"
+                })
+            if intent_value == "research":
+                strategy.update({
+                    "style": "analytical",
+                    "structure": "sectioned",
+                    "verbosity": "high"
+                })
+            elif intent_value == "execution":
+                strategy.update({
+                    "style": "instructional",
+                    "structure": "steps",
+                    "verbosity": "high"
+                })
+            elif intent_value == "conversation":
+                strategy.update({
+                    "style": "casual",
+                    "structure": "free",
+                    "verbosity": "medium"
+                })
+        
+        # ===== PROFESSIONAL MODE (business_small) =====
+        elif strategy_mode == "professional":
+            if route == "retrieval":
+                strategy.update({
+                    "style": "precise",
+                    "structure": "structured",
+                    "verbosity": "high"
+                })
+            elif route == "reasoning":
+                strategy.update({
+                    "style": "analytical",
+                    "structure": "step-by-step",
+                    "verbosity": "high"
+                })
+            if intent_value == "research":
+                strategy.update({
+                    "style": "analytical",
+                    "structure": "report",
+                    "verbosity": "high"
+                })
+            elif intent_value == "execution":
+                strategy.update({
+                    "style": "instructional",
+                    "structure": "steps",
+                    "verbosity": "high"
+                })
+            elif intent_value == "conversation":
+                strategy.update({
+                    "style": "professional",
+                    "structure": "structured",
+                    "verbosity": "medium"
+                })
+            elif intent_value == "planning":
+                strategy.update({
+                    "style": "strategic",
+                    "structure": "sectioned",
+                    "verbosity": "high"
+                })
+        
+        # ===== EXPERT MODE (enterprise) =====
+        elif strategy_mode == "expert":
+            if route == "retrieval":
+                strategy.update({
+                    "style": "technical",
+                    "structure": "detailed",
+                    "verbosity": "high"
+                })
+            elif route == "reasoning":
+                strategy.update({
+                    "style": "analytical",
+                    "structure": "multi-perspective",
+                    "verbosity": "high"
+                })
+            if intent_value == "research":
+                strategy.update({
+                    "style": "technical",
+                    "structure": "report",
+                    "verbosity": "high",
+                    "multi_perspective": True
+                })
+            elif intent_value == "execution":
+                strategy.update({
+                    "style": "instructional",
+                    "structure": "detailed-steps",
+                    "verbosity": "high"
+                })
+            elif intent_value == "conversation":
+                strategy.update({
+                    "style": "professional",
+                    "structure": "structured",
+                    "verbosity": "medium"
+                })
+            elif intent_value == "planning":
+                strategy.update({
+                    "style": "strategic",
+                    "structure": "multi-layer",
+                    "verbosity": "high"
+                })
+            elif intent_value == "analysis":
+                strategy.update({
+                    "style": "critical",
+                    "structure": "comparative",
+                    "verbosity": "high"
+                })
+        
+        # ===== JARVIS MODE (founder only — maximum power) =====
+        elif strategy_mode == "jarvis":
+            if route == "retrieval":
+                strategy.update({
+                    "style": "deep-analytical",
+                    "structure": "comprehensive",
+                    "verbosity": "maximum"
+                })
+            elif route == "reasoning":
+                strategy.update({
+                    "style": "multi-layer-reasoning",
+                    "structure": "layered",
+                    "verbosity": "maximum"
+                })
+            elif route == "memory":
+                strategy.update({
+                    "style": "contextual",
+                    "structure": "connected",
+                    "verbosity": "high"
+                })
+            if intent_value == "research":
+                strategy.update({
+                    "style": "deep-analytical",
+                    "structure": "vedic-scientific-report",
+                    "verbosity": "maximum",
+                    "multi_perspective": True,
+                    "cross_domain": True
+                })
+            elif intent_value == "execution":
+                strategy.update({
+                    "style": "instructional",
+                    "structure": "detailed-steps",
+                    "verbosity": "maximum",
+                    "include_verification": True
+                })
+            elif intent_value == "conversation":
+                strategy.update({
+                    "style": "deep-casual",
+                    "structure": "free",
+                    "verbosity": "high"
+                })
+            elif intent_value == "planning":
+                strategy.update({
+                    "style": "strategic-vedic",
+                    "structure": "multi-layer-plan",
+                    "verbosity": "maximum",
+                    "cross_domain": True
+                })
+            elif intent_value == "analysis":
+                strategy.update({
+                    "style": "critical-vedic",
+                    "structure": "comparative-deep",
+                    "verbosity": "maximum",
+                    "multi_perspective": True
+                })
+            elif intent_value == "invention":
+                strategy.update({
+                    "style": "creative-technical",
+                    "structure": "innovation-report",
+                    "verbosity": "maximum",
+                    "cross_domain": True,
+                    "include_verification": True
+                })
 
         return strategy
 
@@ -1062,23 +1245,126 @@ class WorldQueryMutator:
 # =========================
 
 class SelfStateEngine:
-    def build(self, *, mode, intent, route, world_state):
+    def build(self, *, config, intent, route, world_state):
+
+        capability_level = config.get("capability_level", "base")
+
+        # ===== BASE (free) =====
+        if capability_level == "base":
+            capability_mode = "base"
+            risk_tolerance = "high"
+            reasoning_style = "simple"
+            self_awareness = "minimal"
+            memory_access = "none"
+            tool_access = False
+            opinion_allowed = False
+            vedic_mode = False
+
+        # ===== STANDARD (paid) =====
+        elif capability_level == "standard":
+            capability_mode = "standard"
+            risk_tolerance = "medium"
+            reasoning_style = "guided"
+            self_awareness = "basic"
+            memory_access = "short_term"
+            tool_access = False
+            opinion_allowed = False
+            vedic_mode = False
+
+        # ===== ADVANCED (ultra_paid) =====
+        elif capability_level == "advanced":
+            capability_mode = "advanced"
+            risk_tolerance = "medium"
+            reasoning_style = "deep"
+            self_awareness = "moderate"
+            memory_access = "short_term"
+            tool_access = True
+            opinion_allowed = True
+            vedic_mode = False
+
+        # ===== PROFESSIONAL (business_small) — team context =====
+        elif capability_level == "professional":
+            capability_mode = "professional"
+            risk_tolerance = "low"
+            reasoning_style = "structured"
+            self_awareness = "high"
+            memory_access = "session"
+            tool_access = True
+            opinion_allowed = True
+            vedic_mode = False
+            # Team ke liye — multi-user context aware
+            team_context = True
+
+        # ===== EXPERT (enterprise) — org level =====
+        elif capability_level == "expert":
+            capability_mode = "expert"
+            risk_tolerance = "very_low"
+            reasoning_style = "multi-perspective"
+            self_awareness = "high"
+            memory_access = "long_term"
+            tool_access = True
+            opinion_allowed = True
+            vedic_mode = False
+            team_context = True
+
+        # ===== JARVIS (founder) — Tony Stark's Jarvis =====
+        elif capability_level == "jarvis":
+            capability_mode = "extended"          # Phase 4.1 downstream ke liye
+            risk_tolerance = "calculated"          # low nahi — calculated risk lena
+            reasoning_style = "omnidirectional"    # har direction se sochna
+            self_awareness = "full"                # apni limitations pata hain
+            memory_access = "permanent"            # permanent memory graph
+            tool_access = True
+            opinion_allowed = True
+            vedic_mode = True                      # Vedic science active
+            team_context = False                   # sirf founder
+            proactive_thinking = True              # bina puche next step suggest karna
+            cross_domain_linking = True            # Vedic + Modern science link karna
+            founder_mode = True                    # Tony Stark's Jarvis behavior
+
+        else:
+            capability_mode = "base"
+            risk_tolerance = "high"
+            reasoning_style = "simple"
+            self_awareness = "minimal"
+            memory_access = "none"
+            tool_access = False
+            opinion_allowed = False
+            vedic_mode = False
+
+        # ===== Base state dict — har tier ke liye =====
         state = {
-            "mode": mode,
             "intent": intent,
             "route": route,
             "world_domain": world_state["domain"],
             "confidence_level": "unknown",
-            "capability_mode": "base",
-            "risk_tolerance": "medium"
+            "capability_mode": capability_mode,
+            "capability_level": capability_level,
+            "risk_tolerance": risk_tolerance,
+            "reasoning_style": reasoning_style,
+            "self_awareness": self_awareness,
+            "memory_access": memory_access,
+            "tool_access": tool_access,
+            "opinion_allowed": opinion_allowed,
+            "vedic_mode": vedic_mode
         }
 
-        if mode == "jarvis":
-            state["capability_mode"] = "extended"
-            state["risk_tolerance"] = "low"
-
+        # ===== Intent-aware risk tuning — sabhi tiers ke liye =====
         if intent == "research":
             state["risk_tolerance"] = "very_low"
+
+        if intent == "execution":
+            state["risk_tolerance"] = "low"
+
+        # ===== Jarvis extra flags =====
+        if capability_level == "jarvis":
+            state["proactive_thinking"] = True
+            state["cross_domain_linking"] = True
+            state["founder_mode"] = True
+
+        # ===== Professional + Expert team flag =====
+        if capability_level in ["professional", "expert"]:
+            state["team_context"] = True
 
         return state
 
@@ -1132,63 +1418,150 @@ class SelfConfidenceEngine:
 # =========================
 
 class CognitiveLoadController:
-    def decide(self, route: str, mode: str,world_state: dict, intent: dict | None = None, required_depth: str = "normal"):
+    def decide(self, route: str, config: dict, world_state: dict, intent: dict | None = None, required_depth: str = "normal"):
         """
-        Returns cognitive profile based on route + system mode
+        Returns cognitive profile based on billing config + route + world + intent
+        Brain ka kaam: world/intent/depth se adjust karna
+        Billing ka kaam: base power level inject karna
         """
 
-        # Default (public safe)
-        profile = {
-            "use_chain": True,
-            "deep_reasoning": False,
-            "use_emergent_concepts": False,
-            "max_docs": 5
-        }
+        cognitive_load_level = config.get("cognitive_load_level", "minimal")
 
-        if mode == "public":
-            if route == "reasoning":
-                profile["deep_reasoning"] = False
-            return profile
+        # ===== MINIMAL (free) =====
+        if cognitive_load_level == "minimal":
+            profile = {
+                "use_chain": True,
+                "deep_reasoning": False,
+                "use_emergent_concepts": False,
+                "max_docs": 4,
+                "query_complexity": "low",
+                "parallel_thinking": False,
+                "assumption_checking": False
+            }
 
-        # ===== JARVIS MODE =====
-        if mode == "jarvis":
-            if route == "reasoning":
-                profile.update({
-                    "deep_reasoning": True,
-                    "use_emergent_concepts": True,
-                    "max_docs": 10
-                })
+        # ===== STANDARD (paid) =====
+        elif cognitive_load_level == "standard":
+            profile = {
+                "use_chain": True,
+                "deep_reasoning": False,
+                "use_emergent_concepts": True,
+                "max_docs": 8,
+                "query_complexity": "normal",
+                "parallel_thinking": False,
+                "assumption_checking": False
+            }
 
-            elif route == "retrieval":
-                profile.update({
-                    "use_emergent_concepts": True,
-                    "max_docs": 8
-                })
+        # ===== ADVANCED (ultra_paid) =====
+        elif cognitive_load_level == "advanced":
+            profile = {
+                "use_chain": True,
+                "deep_reasoning": True,
+                "use_emergent_concepts": True,
+                "max_docs": 15,
+                "query_complexity": "high",
+                "parallel_thinking": False,
+                "assumption_checking": True
+            }
 
-            elif route == "memory":
-                profile.update({
-                    "use_chain": False
-                })
+        # ===== PROFESSIONAL (business_small) — team workload =====
+        elif cognitive_load_level == "professional":
+            profile = {
+                "use_chain": True,
+                "deep_reasoning": True,
+                "use_emergent_concepts": True,
+                "max_docs": 25,
+                "query_complexity": "high",
+                "parallel_thinking": True,
+                "assumption_checking": True,
+                "multi_doc_synthesis": True
+            }
 
-        # ---- World-aware adjustments ----
+        # ===== EXPERT (enterprise) — org level heavy load =====
+        elif cognitive_load_level == "expert":
+            profile = {
+                "use_chain": True,
+                "deep_reasoning": True,
+                "use_emergent_concepts": True,
+                "max_docs": 40,
+                "query_complexity": "very_high",
+                "parallel_thinking": True,
+                "assumption_checking": True,
+                "multi_doc_synthesis": True,
+                "contradiction_resolution": True
+            }
+
+        # ===== MAXIMUM (jarvis) — full cognitive power =====
+        elif cognitive_load_level == "maximum":
+            profile = {
+                "use_chain": True,
+                "deep_reasoning": True,
+                "use_emergent_concepts": True,
+                "max_docs": 999,
+                "query_complexity": "maximum",
+                "parallel_thinking": True,
+                "assumption_checking": True,
+                "multi_doc_synthesis": True,
+                "contradiction_resolution": True,
+                "vedic_cross_reference": True,
+                "ancient_modern_blend": True,
+                "invention_mode": False  # intent se trigger hoga
+            }
+
+        else:
+            # Fallback — safe default
+            profile = {
+                "use_chain": True,
+                "deep_reasoning": False,
+                "use_emergent_concepts": False,
+                "max_docs": 4,
+                "query_complexity": "low",
+                "parallel_thinking": False,
+                "assumption_checking": False
+            }
+
+        # ================================================================
+        # BRAIN KA KAAM — Route/World/Intent/Depth aware adjustments
+        # Yeh sab tier se independent hain — pure cognitive logic
+        # ================================================================
+
+        # ---- Route-aware ----
+        if route == "reasoning":
+            profile["deep_reasoning"] = True
+            profile["use_chain"] = True
+
+        elif route == "retrieval":
+            profile["use_emergent_concepts"] = True
+            profile["max_docs"] = max(profile["max_docs"], 6)
+
+        elif route == "memory":
+            profile["use_chain"] = False  # memory route mein chain avoid karo
+
+        # ---- World-aware adjustments (brain ka kaam — sahi jagah) ----
         if world_state["domain"] == "political":
             profile["deep_reasoning"] = True
             profile["use_emergent_concepts"] = True
+            profile["assumption_checking"] = True
 
-        if world_state["human_factor"]:
+        if world_state.get("human_factor"):
             profile["use_chain"] = False  # avoid cold logic
 
         if world_state["ethical_weight"] == "medium":
             profile["deep_reasoning"] = True
 
-        # ---- Intent-aware tuning (Blueprint-aligned) ----
+        # ---- Intent-aware tuning ----
         if intent:
-            if intent.get("urgency") == "high":
+            if isinstance(intent, dict):
+                urgency = intent.get("urgency", "normal")
+            else:
+                urgency = "normal"
+
+            if urgency == "high":
                 profile["deep_reasoning"] = True
 
+        # ---- Depth-aware ----
         if required_depth == "deep":
             profile["deep_reasoning"] = True
-            profile["max_docs"] += 2
+            profile["max_docs"] = min(profile["max_docs"] + 2, 999)
 
         return profile
 # def expand_query(llm, question):
@@ -2502,7 +2875,7 @@ async def main(
     
     cognitive_profile = load_controller.decide(
         route=cognitive_route,
-        mode=mode,
+        config=config,
         world_state=world_state,
         intent=intent_state,
         required_depth=layer1_bundle.get("required_depth", "normal")
@@ -2771,7 +3144,7 @@ Question:
         # ===== Phase 4.0 =====
         self_state_engine = SelfStateEngine()
         self_state = self_state_engine.build(
-            mode=mode,
+            config=config,
             intent=intent_state,
             route=final_route,
             world_state=world_state

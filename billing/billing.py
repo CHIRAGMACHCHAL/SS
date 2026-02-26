@@ -46,7 +46,9 @@ class BillingLayer:
             return {  
                 "tier": "jarvis", 
 
-                "response_strategy_mode": "advanced",
+                "response_strategy_mode": "jarvis",
+                "capability_level": "jarvis",
+                "cognitive_load_level": "maximum",
 
                 "max_docs": 999999,  
                 "deep_reasoning": True,  
@@ -70,7 +72,9 @@ class BillingLayer:
             return {  
                 "tier": "enterprise", 
 
-                "response_strategy_mode": "advanced",
+                "response_strategy_mode": "expert",
+                "capability_level": "expert",
+                "cognitive_load_level": "expert",
 
                 "max_docs": 50,  
                 "deep_reasoning": True,  
@@ -94,7 +98,9 @@ class BillingLayer:
             return {  
                 "tier": "business_small",  
 
-                "response_strategy_mode": "advanced",
+                "response_strategy_mode": "professional",
+                "capability_level": "professional",
+                "cognitive_load_level": "professional",
 
                 "max_docs": 35,  
                 "deep_reasoning": True,  
@@ -119,6 +125,8 @@ class BillingLayer:
                 "tier": "ultra_paid",
   
                 "response_strategy_mode": "advanced",
+                "capability_level": "advanced",
+                "cognitive_load_level": "advanced",
 
 
                 "max_docs": 25,  
@@ -144,6 +152,8 @@ class BillingLayer:
                 "tier": "paid", 
  
                 "response_strategy_mode": "standard",
+                "capability_level": "standard",
+                "cognitive_load_level": "standard",
  
 
 
@@ -170,6 +180,8 @@ class BillingLayer:
                 "tier": "free",
 
                 "response_strategy_mode": "basic",
+                "capability_level": "base",
+                "cognitive_load_level": "minimal",
 
 
                 "max_docs": 6,  
