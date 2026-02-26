@@ -1,8 +1,12 @@
 #orchestrator/orchestrator.py Orchestrator Layer - Production entry point, ties everything together
 import os
+import asyncio
 import time
 from typing import Dict, Any
 from brain.main import main as agi_brain  # Tere AGI brain call (Layer 6)
+from memory.conversation_memory import ConversationMemory
+from memory.graph_sync import MemoryGraph
+from memory.storage import MemoryStorageLayer
 
 # =========================
 # ENVIRONMENT VARIABLES
@@ -21,12 +25,13 @@ class Orchestrator:
 
     def __init__(self):
         self.log_level = LOG_LEVEL
+        self.storage = MemoryStorageLayer()
 
     def log(self, message: str, level: str = "INFO"):
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
         print(f"[{level}] {timestamp} - {message}")
 
-    def run(
+    async def run(
         self,
         question: str,
         config: Dict[str, Any],
@@ -34,7 +39,8 @@ class Orchestrator:
         user_email: str
     ) -> Dict[str, Any]:
         self.log(f"Orchestrator: Starting for user {user_email} (tier: {config['tier']})")
-
+        storage_config = await self.storage.get_storage_config(user_email)
+        
         # 1. Memory attach (Layer 8 - real call when Layer 8 done)
         memory = self._get_memory(conversation_id)
         self.log(f"Memory attached (length: {len(memory)} chars)")

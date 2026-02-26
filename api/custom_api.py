@@ -1,10 +1,15 @@
 # custom_api.py - Layer 2: Custom API Layer (Production ready)
-
+import asyncio
 import socket
 import threading
 import time
 import json
 from datetime import datetime
+from auth.auth import AuthEngine
+from billing.billing import BillingLayer
+from orchestrator.orchestrator import Orchestrator
+
+orchestrator = Orchestrator()   # global instance
 
 # Custom JSON parser (no lib, simple for industry level basic)
 def parse_json(data):
@@ -94,18 +99,36 @@ def handle_client(conn, addr):
 
         # Auth check
         auth_header = headers.get("Authorization", "")
+        token = auth_header.replace("Bearer ", "")
+        user_data = AuthEngine.verify_jwt(token)
         user = verify_auth(auth_header)
-        if not user:
+        if not user_data or not user:
             conn.send(build_response("401 Unauthorized", json.dumps({"error": "Invalid token"})))
             conn.close()
             return
+        user_email = user_data.get("email")
 
         # Subscription verify
+        config = BillingLayer.generate_config(user_email)
         config = verify_subscription(user)
         if not config:
             conn.send(build_response("403 Forbidden", json.dumps({"error": "Subscription invalid"})))
             conn.close()
             return
+
+        # ---- Call orchestrator asynchronously ----
+        try:
+            result = asyncio.run(orchestrator.run(
+                question=request["message"],
+                config=config,
+                conversation_id=request["conversation_id"],
+                user_email=user_email
+            ))
+            response_body = json.dumps({"response": result["response"]})
+            conn.send(build_response("200 OK", response_body))
+        except Exception as e:
+            conn.send(build_response("500 Internal Server Error", json.dumps({"error": str(e)})))
+
 
         # Orchestrator call
         response = call_orchestrator(request["message"], config, request["conversation_id"])

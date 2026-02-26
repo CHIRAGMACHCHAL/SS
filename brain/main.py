@@ -14,35 +14,8 @@ import hashlib
 import boto3
 from botocore.exceptions import NoCredentialsError
 from memory.conversation_memory import ConversationMemory
-from memory.graph_sync import MemoryGraph      
+from memory.graph_sync import MemoryGraph     
 
-# # =========================
-# # PUBLIC TIER CONFIGURATION
-# # =========================
-
-# PUBLIC_TIER = "free"   # "free" | "pro" | "ultra"
-
-# def apply_public_tier_limits(cognitive_profile: dict) -> dict:
-    
-#     if PUBLIC_TIER == "free":
-#         cognitive_profile["deep_reasoning"] = False
-#         cognitive_profile["use_emergent_concepts"] = False
-#         cognitive_profile["max_docs"] = 4
-#         cognitive_profile["query_complexity"] = "low"
-    
-#     elif PUBLIC_TIER == "pro":
-#         cognitive_profile["deep_reasoning"] = False
-#         cognitive_profile["use_emergent_concepts"] = True                                         yyyyyyyyyyyy
-#         cognitive_profile["max_docs"] = 8
-#         cognitive_profile["query_complexity"] = "normal"
-    
-#     elif PUBLIC_TIER == "ultra":
-#         cognitive_profile["deep_reasoning"] = True
-#         cognitive_profile["use_emergent_concepts"] = True
-#         cognitive_profile["max_docs"] = 12
-#         cognitive_profile["query_complexity"] = "high"
-    
-#     return cognitive_profile
 
 # =========================
 # PRODUCTION QDRANT CONFIG
@@ -51,9 +24,8 @@ from memory.graph_sync import MemoryGraph
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 
-PUBLIC_COLLECTION = "public_core"
-JARVIS_COLLECTION = "jarvis_private"
-
+# PUBLIC_COLLECTION = "public_core"
+# JARVIS_COLLECTION = "jarvis_private"                                           yyyyyyyyyyyy
 # =========================
 # QDRANT CLOUD CLIENT (PERMANENT)
 # =========================
@@ -108,16 +80,17 @@ logging.basicConfig(
 # Constants
 # DATA_DIR = r"D:\OLLAMA\data"
 
+
+# # ===== SYSTEM MODE =====
+# SYSTEM_MODE = "public"   # "public" or "jarvis"                                                      yyyyyyyyyyyy
+
 EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
 #-----------------------------------------------
 # VECTOR_STORE_NAME = "simple-rag"
-
-
-def get_collection_name(system_mode: str) -> str:
-    if system_mode == "jarvis":
-        return JARVIS_COLLECTION
-    return PUBLIC_COLLECTION
-
+# def get_collection_name(system_mode: str):
+#     if system_mode == "jarvis":                                                                   yyyyyyyyyyyy
+#         return JARVIS_COLLECTION
+#     return PUBLIC_COLLECTION
 #-------------------------------------------
 #-----------------------------------------------
 def download_pdfs_from_s3(bucket_name, prefix=""):
@@ -354,7 +327,7 @@ def calculate_s3_fingerprint(bucket_name, prefix=""):
 def create_or_load_vector_db(data_dir=None, system_mode="public"):
     # ollama.pull(EMBEDDING_MODEL)
 
-    collection_name = get_collection_name(system_mode)
+    collection_name = get_collection_name(system_mode) 
     # fingerprint_file = "./qdrant_data/data.fingerprint"
     # current_fp = calculate_data_fingerprint(data_dir)
     # current_fp = calculate_s3_fingerprint(S3_BUCKET_NAME, S3_PREFIX)
@@ -836,10 +809,15 @@ def memory_lookup(vector_db, question, k=6):
 # =========================
 
 class ResponseStrategyEngine:
-    def decide(self, route, intent, mode, cognitive_profile):
+    def decide(self, route, intent, config, cognitive_profile):
         """
         Decides HOW the answer should be framed
         Returns a response strategy dict
+
+        route: current cognitive route (memory/retrieval/reasoning)
+        intent: dict with 'state' (research/execution/conversation) and 'required_depth'
+        config: from billing layer, contains 'response_strategy_mode'
+        cognitive_profile: current cognitive profile (may be used later)
         """
 
         strategy = {
@@ -849,24 +827,10 @@ class ResponseStrategyEngine:
             "system_prompt": None
         }
 
-        # ===== PUBLIC MODE =====
-        if mode == "public":
-            if route == "retrieval":
-                strategy.update({
-                    "style": "informative",
-                    "structure": "concise",
-                    "verbosity": "low"
-                })
-
-            elif route == "reasoning":
-                strategy.update({
-                    "style": "clear",
-                    "structure": "step-lite",
-                    "verbosity": "medium"
-                })
+        strategy_mode = config.get("response_strategy_mode", "basic")
 
         # ===== JARVIS MODE =====
-        if mode == "jarvis":
+        if strategy_mode == "advanced":  # jarvis mode
             if intent == "research":
                 strategy.update({
                     "style": "analytical",
@@ -887,6 +851,22 @@ class ResponseStrategyEngine:
                     "structure": "free",
                     "verbosity": "low"
                 })
+
+        # ===== PUBLIC MODE =====
+        else:
+            if route == "retrieval":
+                strategy.update({
+                    "style": "informative",
+                    "structure": "concise",
+                    "verbosity": "low"
+                })
+
+            elif route == "reasoning":
+                strategy.update({
+                    "style": "clear",
+                    "structure": "step-lite",
+                    "verbosity": "medium"
+                })        
 
         return strategy
 
@@ -2321,85 +2301,99 @@ class FinalSynthesisEngine:
 
         return structured, judgement
     
-#----------------------------------------------------
-# =========================
-# SECTION 7 — OUTPUT BOUNDARY & RESPONSE GUARD
-# =========================
+# #----------------------------------------------------
+# # =========================
+# # SECTION 7 — OUTPUT BOUNDARY & RESPONSE GUARD
+# # =========================
 
-class OutputBoundaryGuard:
-    """
-    FINAL RESPONSE BOUNDARY
-    -----------------------
-    - Runs AFTER Layer-5 synthesis
-    - Does NOT modify reasoning logic
-    - Only enforces output safety + policy
-    """
+# class OutputBoundaryGuard:
+#     """
+#     FINAL RESPONSE BOUNDARY
+#     -----------------------
+#     - Runs AFTER Layer-5 synthesis
+#     - Does NOT modify reasoning logic
+#     - Only enforces output safety + policy
+#     """
 
-    def enforce(self, *, answer: str, mode: str, intent: str, cognitive_profile: dict = None) -> str:
-        final_answer = answer.strip()
+#     def enforce(self, *, answer: str, mode: str, intent: str, cognitive_profile: dict = None) -> str:
+#         final_answer = answer.strip()
 
-        # ---- Public hard limits ----
-        if mode == "public":
-            # ❌ No commands / authority tone
-            forbidden_phrases = [
-                "you must",
-                "you should always",
-                "it is mandatory",
-                "guaranteed",
-                "100%"
-            ]
-            for p in forbidden_phrases:
-                if p in final_answer.lower():
-                    final_answer = final_answer.replace(p, "")
-                    final_answer += f"\n\n[Boundary Notice: authority tone adjusted for public mode]"
+#         # ---- Public hard limits ----
+#         if mode == "public":
+#             # ❌ No commands / authority tone
+#             forbidden_phrases = [
+#                 "you must",
+#                 "you should always",
+#                 "it is mandatory",
+#                 "guaranteed",
+#                 "100%"
+#             ]
+#             for p in forbidden_phrases:
+#                 if p in final_answer.lower():
+#                     final_answer = final_answer.replace(p, "")
+#                     final_answer += f"\n\n[Boundary Notice: authority tone adjusted for public mode]"
 
 
         
-            # ❌ No excessive certainty
-            if "always" in final_answer.lower():
-                final_answer += "\n\n(Note: This may vary depending on context.)"
+#             # ❌ No excessive certainty
+#             if "always" in final_answer.lower():
+#                 final_answer += "\n\n(Note: This may vary depending on context.)"
         
 
 
 
-        # ---- Jarvis mode transparency ----
-        if mode == "jarvis" and intent == "research":
-            final_answer += "\n\n— Generated with extended reasoning enabled."
+#         # ---- Jarvis mode transparency ----
+#         if mode == "jarvis" and intent == "research":
+#             final_answer += "\n\n— Generated with extended reasoning enabled."
 
-        return final_answer
+#         return final_answer
 
-# =========================
-# SECTION 8 — DEPLOYMENT GOVERNANCE
-# =========================
+# # =========================
+# # SECTION 8 — DEPLOYMENT GOVERNANCE
+# # =========================
 
-class DeploymentGovernor:
-    """
-    Deployment & Tier Governance
-    ----------------------------
-    - Controls exposure
-    - NOT part of cognition
-    """
+# class DeploymentGovernor:
+#     """
+#     Deployment & Tier Governance
+#     ----------------------------
+#     - Controls exposure
+#     - NOT part of cognition
+#     """
 
-    def apply(self, *, mode: str, intent: str, response: str) -> str:
-        # ---- Public mode governance (non-business) ----
-        if mode == "public" and intent in ["research", "execution"]:
-            response = (
-                "[Public Mode] Response adapted for safe public exposure.\n\n"
-                + response
-            )
+#     def apply(self, *, mode: str, intent: str, response: str) -> str:
+#         # ---- Public tier constraints ----
+#         if mode == "public":
+#             if intent in ["research", "execution"]:
+#                 response = (
+#                     "[Public Notice] Response adjusted for public tier visibility.\n\n"
+#                     + response
+#                 )
 
-        # ---- Jarvis audit tag ----
-        if mode == "jarvis":
-            response += "\n\n[Governance: Jarvis-tier execution]"
+#         response = (
+#             f"[Public Tier: {PUBLIC_TIER.upper()}]\n\n"
+#             + response
+#         )
 
-        return response
+
+#         # ---- Jarvis audit tag ----
+#         if mode == "jarvis":
+#             response += "\n\n[Governance: Jarvis-tier execution]"
+
+#         return response
 
 
    
 #========================================================================================================================
 #============================================================================================================================
     
-async def main(question: str, config: Dict[str, Any]):
+async def main(
+    question: str,
+    config: Dict[str, Any],
+    vector_db,                     # injected
+    memory_graph: MemoryGraph,     # injected
+    conversation_memory: ConversationMemory,  # injected
+    conversation_id: str = None
+) -> str:
     """  
     AGI Brain - Pure Intelligence Layer  
       
@@ -2414,38 +2408,37 @@ async def main(question: str, config: Dict[str, Any]):
             - allowed_tools: list  
             - max_tokens: int  
     """  
-    # Extract mode from config (business tiers handled outside)
-    tier = config.get("tier", "public")
+    # Extract mode from config  
+    tier = config["tier"]  
     mode = "jarvis" if tier == "jarvis" else "public"
 
-    # Optional Phase-6 training hook (guarded by ENABLE_TRAINING)
+
     training_result = training_controller.maybe_train(
         dataset_path="./training/datasets/sample.jsonl"
     )
+
     logging.info(f"[PHASE 6 TRAINING] → {training_result}")
 
-    # Initialize the language model chain
+    # vector_db = create_or_load_vector_db(DATA_DIR)
+
+    # Initialize the language model
+          
+
     chain = create_chain(llm)
 
-    # Conversation + persistent memory graph (Layer 4 + Layer 8)
-    memory_layer = ConversationMemory()
-    conversation_id = str(uuid.uuid4())
+    question = "How to report The Prince ?"
+
+    memory_layer = ConversationMemory()  
+    conversation_id = str(uuid.uuid4())  
 
     # Layer 4 Full Memory Graph (Blueprint ka REAL BRAIN - Persistent + Tier-aware)
     memory_graph_full = MemoryGraph()
     await memory_graph_full.init_connections()
 
-    # Layer 8 connections initialize (async)
-    await memory_layer.init_connections()
+    # Layer 8 + Layer 4 combined initialization complete
 
-    # =========================
-    # VECTOR DB + MEMORY GRAPH INIT (per-request, per-mode)
-    # =========================
-    vector_db = create_or_load_vector_db(
-        data_dir=None,
-        system_mode=mode,
-    )
-    memory_graph = MemoryGraphAdapter(vector_db)
+     # Layer 8 connections initialize (async)
+    await memory_layer.init_connections()
 
     # ================================
     # LAYER 1 : INTENT DECOMPOSITION
@@ -2513,6 +2506,7 @@ async def main(question: str, config: Dict[str, Any]):
         world_state=world_state,
         intent=intent_state,
         required_depth=layer1_bundle.get("required_depth", "normal")
+        
     )
     # ===== 🔒 LAYER-2 HARD GUARANTEES (ADD THIS) =====
     cognitive_profile.setdefault("deep_reasoning", False)
@@ -2525,19 +2519,15 @@ async def main(question: str, config: Dict[str, Any]):
         "confidence",
         0.6 if cognitive_profile.get("deep_reasoning") else 0.75
     )
-
-    # ===== External tier/config overrides (Billing/Orchestrator-controlled) =====
-    for key in ("deep_reasoning", "use_emergent_concepts", "max_docs", "query_complexity"):
-        if key in config:
-            cognitive_profile[key] = config[key]
-
     logging.info(f"[Cognitive Profile] → {cognitive_profile}")
     # Ab system ko pata hai :
-    #   1. kitna deep sochna hai
-    #   2. fast/ slow/ research mode
-    #   3. token + reasoning budget | layer 3 isi output pr chalegi
+          #1. kitna deep sochna hai | 2.fast/ slow/ research mode | 3.token + reasoning budget | layer 3 isi output pr chalegi
 
-    # ================================
+ 
+      
+    
+    
+       # ================================
     # LAYER 2 — ADAPTIVE QUERY EXPANSION
     # ================================
     
@@ -2660,7 +2650,7 @@ async def main(question: str, config: Dict[str, Any]):
     # ──────────────── Layer 8: Fetch previous conversation history ────────────────
     history = await memory_layer.get_conversation_history(
         conversation_id=conversation_id,
-        tier=mode
+        tier=tier
     )
 
     # History ko current context mein mix kar do (very useful for continuity)
@@ -2712,21 +2702,21 @@ async def main(question: str, config: Dict[str, Any]):
             "state": intent_state,
             "required_depth": layer1_bundle.get("required_depth", "normal")
         },
-        mode=mode,
+        config=config,
         cognitive_profile=cognitive_profile
     )
 
     logging.info(f"[Response Strategy] → {response_strategy}")
 
 
-    if mode == "jarvis":
-        cognitive_profile["deep_reasoning"] = True
-        cognitive_profile["use_emergent_concepts"] = True
-        cognitive_profile["max_docs"] = 15
+    # if mode == "jarvis":
+    #     cognitive_profile["deep_reasoning"] = True
+    #     cognitive_profile["use_emergent_concepts"] = True
+    #     cognitive_profile["max_docs"] = 15
 
 
     
-    # if mode == "jarvis" and intent_state == "research":
+    # if SYSTEM_MODE == "jarvis" and intent_state == "research":
     
     #     cognitive_profile.update({
     #     "deep_reasoning": True,
@@ -3057,7 +3047,7 @@ Question:
     
 
     meta_engine = MetaCognitionEngine()
-    meta = meta_engine.evaluate(res, mode)
+    meta = meta_engine.evaluate(res, mode=mode, intent=intent_state)
     cognitive_profile["confidence"] = meta.get("confidence", cognitive_profile.get("confidence", 0.6))
     world_state["cognitive_confidence"] = cognitive_profile["confidence"]
 
@@ -3080,7 +3070,7 @@ Question:
     
  
         
-    # ================================
+        # ================================
     # PHASE 6 — SELF TRAINING (JARVIS)
     # ================================
     
@@ -3095,6 +3085,7 @@ Question:
             agency_result=agency_result,
             mode=mode
         )
+    
         # ---- Phase 6B : Knowledge Fine-tuning ----
         tuner = KnowledgeFineTuner()
         knowledge_patch = tuner.update(
@@ -3171,7 +3162,7 @@ Question:
         conversation_id=conversation_id,
         question=question,
         answer=final_response,
-        tier=mode,
+        tier=tier,
         project_context="Vimana Project" if mode == "jarvis" else None
     )
 
@@ -3179,7 +3170,7 @@ Question:
     await memory_graph_full.sync_to_memory_graph(
         question=question,
         answer=final_response,
-        tier=mode
+        tier=tier
     )
 
     # Optional debug
@@ -3212,7 +3203,7 @@ Question:
     boundary_guard = OutputBoundaryGuard()
     final_response = boundary_guard.enforce(
         answer=final_response,
-        mode=mode,
+        mode=SYSTEM_MODE,
         intent=intent_state,
         cognitive_profile=cognitive_profile
     )
@@ -3222,26 +3213,15 @@ Question:
     # =========================
     governor = DeploymentGovernor()
     final_response = governor.apply(
-        mode=mode,
+        mode=SYSTEM_MODE,
         intent=intent_state,
         response=final_response
     )
 
-    return {
-        "final_answer": final_response,
-        "mode": mode,
-        "intent_state": intent_state,
-        "cognitive_profile": cognitive_profile,
-    }
+    print("\nFinal Response:")
+    print(final_response)
 
 
 if __name__ == "__main__":
     import asyncio
-
-    user_question = input("Question: ")
-    default_config: Dict[str, Any] = {
-        "tier": "jarvis",
-    }
-    result = asyncio.run(main(user_question, default_config))
-    print("\nFinal Response:")
-    print(result["final_answer"])
+    asyncio.run(main())

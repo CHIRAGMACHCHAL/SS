@@ -9,3 +9,11 @@ dist/
 build/
 chatgpt.PY
 b.py
+h.py
+.cursorignore
+Blueprint.pdf
+table (1).csv
+table.csv
+tools.csv
+
+

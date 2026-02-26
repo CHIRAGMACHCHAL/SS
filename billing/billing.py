@@ -44,7 +44,10 @@ class BillingLayer:
         # ========== TIER 6: JARVIS (FOUNDER) ==========  
         if tier == "jarvis":  
             return {  
-                "tier": "jarvis",  
+                "tier": "jarvis", 
+
+                "response_strategy_mode": "advanced",
+
                 "max_docs": 999999,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
@@ -57,14 +60,18 @@ class BillingLayer:
                 "private_memory": True,  
                 "long_term_memory": True,  
                 "unlimited_mode": True,  
-                "conversation_history_limit": 100,  
+                "conversation_history_limit": 100,
+                "trace_logging": True,  
                 "rate_limit": None  # Unlimited  
             }  
   
         # ========== TIER 5: ENTERPRISE (LARGE COMPANIES) ==========  
         elif tier == "enterprise":  
             return {  
-                "tier": "enterprise",  
+                "tier": "enterprise", 
+
+                "response_strategy_mode": "advanced",
+
                 "max_docs": 50,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
@@ -77,7 +84,8 @@ class BillingLayer:
                 "private_memory": False,  
                 "long_term_memory": True,  
                 "unlimited_mode": False,  
-                "conversation_history_limit": 50,  
+                "conversation_history_limit": 50,
+                "trace_logging": False,  
                 "rate_limit": 1000  # requests per day  
             }  
   
@@ -85,6 +93,9 @@ class BillingLayer:
         elif tier == "business_small":  
             return {  
                 "tier": "business_small",  
+
+                "response_strategy_mode": "advanced",
+
                 "max_docs": 35,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
@@ -97,14 +108,19 @@ class BillingLayer:
                 "private_memory": False,  
                 "long_term_memory": False,  
                 "unlimited_mode": False,  
-                "conversation_history_limit": 30,  
+                "conversation_history_limit": 30,
+                "trace_logging": False,  
                 "rate_limit": 500  # requests per day  
             }  
   
         # ========== TIER 3: ULTRA PAID (INDIVIDUAL) ==========  
         elif tier == "ultra_paid":  
             return {  
-                "tier": "ultra_paid",  
+                "tier": "ultra_paid",
+  
+                "response_strategy_mode": "advanced",
+
+
                 "max_docs": 25,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
@@ -117,14 +133,20 @@ class BillingLayer:
                 "private_memory": False,  
                 "long_term_memory": False,  
                 "unlimited_mode": False,  
-                "conversation_history_limit": 20,  
+                "conversation_history_limit": 20, 
+                "trace_logging": False, 
                 "rate_limit": 200  # requests per day  
             }  
   
         # ========== TIER 2: PAID (INDIVIDUAL) ==========  
         elif tier == "paid":  
             return {  
-                "tier": "paid",  
+                "tier": "paid", 
+ 
+                "response_strategy_mode": "standard",
+ 
+
+
                 "max_docs": 12,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
@@ -138,13 +160,18 @@ class BillingLayer:
                 "long_term_memory": False,  
                 "unlimited_mode": False,  
                 "conversation_history_limit": 10,  
+                "trace_logging": False,
                 "rate_limit": 100  # requests per day  
             }  
   
         # ========== TIER 1: FREE (INDIVIDUAL) ==========  
         else:  # free  
             return {  
-                "tier": "free",  
+                "tier": "free",
+
+                "response_strategy_mode": "basic",
+
+
                 "max_docs": 6,  
                 "deep_reasoning": False,  
                 "use_emergent_concepts": False,  
@@ -157,6 +184,7 @@ class BillingLayer:
                 "private_memory": False,  
                 "long_term_memory": False,  
                 "unlimited_mode": False,  
-                "conversation_history_limit": 10,  
+                "conversation_history_limit": 10, 
+                "trace_logging": False, 
                 "rate_limit": 50  # requests per day  
             }
