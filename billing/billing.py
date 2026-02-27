@@ -49,6 +49,9 @@ class BillingLayer:
                 "response_strategy_mode": "jarvis",
                 "capability_level": "jarvis",
                 "cognitive_load_level": "maximum",
+                "meta_retry_enabled": True,
+                "meta_confidence_threshold": "medium",  # medium se neeche retry
+                "meta_self_critical": True,   # Jarvis only — extra flag
 
                 "max_docs": 999999,  
                 "deep_reasoning": True,  
@@ -75,6 +78,8 @@ class BillingLayer:
                 "response_strategy_mode": "expert",
                 "capability_level": "expert",
                 "cognitive_load_level": "expert",
+                "meta_retry_enabled": True,
+                "meta_confidence_threshold": "medium",
 
                 "max_docs": 50,  
                 "deep_reasoning": True,  
@@ -101,6 +106,8 @@ class BillingLayer:
                 "response_strategy_mode": "professional",
                 "capability_level": "professional",
                 "cognitive_load_level": "professional",
+                "meta_retry_enabled": True,
+                "meta_confidence_threshold": "low",  # sirf low pe retry
 
                 "max_docs": 35,  
                 "deep_reasoning": True,  
@@ -127,6 +134,8 @@ class BillingLayer:
                 "response_strategy_mode": "advanced",
                 "capability_level": "advanced",
                 "cognitive_load_level": "advanced",
+                "meta_retry_enabled": True,
+                "meta_confidence_threshold": "low",
 
 
                 "max_docs": 25,  
@@ -154,6 +163,8 @@ class BillingLayer:
                 "response_strategy_mode": "standard",
                 "capability_level": "standard",
                 "cognitive_load_level": "standard",
+                "meta_retry_enabled": True,
+                "meta_confidence_threshold": "low",
  
 
 
@@ -182,6 +193,8 @@ class BillingLayer:
                 "response_strategy_mode": "basic",
                 "capability_level": "base",
                 "cognitive_load_level": "minimal",
+                "meta_retry_enabled": True,  # Free users ke liye retry enabled hai, par sirf low confidence pe
+                "meta_confidence_threshold": "low",
 
 
                 "max_docs": 6,  

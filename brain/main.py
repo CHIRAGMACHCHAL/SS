@@ -1712,8 +1712,8 @@ class MetaRetryEngine:
         )
         return cognitive_profile
 
-
-# Phase 5.1 — Goal Formation
+#===============================================================================================
+# Phase 5.1 — Goal Formation                                          sbse last me karo, kyunki yeh sabse high-level hai — ye sirf jarvis mode me hona chahiye — yeh question se directly goal banayega, bypassing all layers of intent/world/cognition — kyunki jarvis ko full freedom dena hai to interpret and act
 
 class GoalFormationEngine:
     def infer(self, question, intent, world_state):
@@ -1878,31 +1878,171 @@ Question: {question}
 # =========================
 
 class MetaCognitionEngine:
-    def evaluate(self, answer: str, mode: str):
+    def evaluate(
+        self,
+        answer: str,
+        config: dict,
+        intent_state: str = None,
+        world_state: dict = None,
+        cognitive_profile: dict = None
+    ):
         """
-        Returns confidence score and decision
+        LIGHT meta-cognition — blueprint strict.
+        
+        Kaam:
+          1. Answer observe karo — judge karo (observer, participant nahi)
+          2. Confidence estimate karo — proxy signals se
+          3. Retry decide karo — billing config se, tier agnostic
+        
+        Rules:
+          - NO LLM call — brain ka code hai yeh
+          - Single-pass evaluation only
+          - MAX ONE retry — call site enforce karta hai
+          - No loops, no recursion
+          - No world-model / self-model awareness (abhi light phase hai)
         """
 
-        # Simple heuristic (lightweight, no heavy logic)
+        # ====================================================
+        # STEP 1: ANSWER KE PROXY SIGNALS — observer mode
+        # Blueprint: "lightweight signal use karta hai"
+        # ====================================================
+
         length = len(answer.split())
 
-        confidence = "low"
+        # Structure hai? — organized thinking ka sign
+        has_structure = any(
+            m in answer
+            for m in ["1.", "2.", "3.", "- ", "• ", "\n\n", "###", "**"]
+        )
+
+        # Reasoning markers? — causal thinking ka sign
+        has_reasoning = any(
+            w in answer.lower()
+            for w in [
+                "because", "therefore", "hence", "reason", "evidence",
+                "suggests", "indicates", "isliye", "kyunki", "iska matlab",
+                "consequently", "thus", "as a result"
+            ]
+        )
+
+        # Incomplete answer? — strong negative signal
+        is_incomplete = answer.strip().endswith(
+            ("...", "etc", "and so on", "aadi", "etc.")
+        )
+
+        # Cognitive profile se — deep reasoning use hua ya nahi
+        # Agar deep reasoning use hua aur answer chhota hai — suspicious
+        deep_used = (cognitive_profile or {}).get("deep_reasoning", False)
+
+        # ====================================================
+        # STEP 2: SCORE CALCULATE KARO — depth proxy
+        # Blueprint: f(length, structure, reasoning_steps...)
+        # ====================================================
+
+        score = 0
+
+        # Length — depth ka proxy
+        if length > 150:    score += 3
+        elif length > 80:   score += 2
+        elif length > 30:   score += 1
+        # < 30 words = likely incomplete, score stays 0
+
+        # Structure — organized answer
+        if has_structure:   score += 1
+
+        # Reasoning — causal thinking present
+        if has_reasoning:   score += 2
+
+        # Deep reasoning use hua — cognitive investment proof
+        if deep_used:       score += 1
+
+        # Incomplete — strong negative
+        if is_incomplete:   score -= 3
+
+        # ====================================================
+        # STEP 3: CONTEXT-AWARE STANDARD TIGHTEN KARO
+        # Billing se alag — yeh answer ki quality standard hai
+        # ====================================================
+
+        # World context se — ethical domain mein zyada careful
+        ethical_weight = (world_state or {}).get("ethical_weight", "low")
+        if ethical_weight in ["medium", "high"]:
+            score -= 1  # higher standard required
+
+        # Research intent — zyada depth chahiye
+        if intent_state == "research":
+            score -= 1  # stricter standard
+
+        # Execution intent — accuracy critical
+        if intent_state == "execution":
+            score -= 1
+
+        # ====================================================
+        # STEP 4: CONFIDENCE ASSIGN KARO
+        # ====================================================
+
+        if score >= 5:    confidence = "high"
+        elif score >= 3:  confidence = "medium"
+        else:             confidence = "low"
+
+        # ====================================================
+        # STEP 5: RETRY DECISION — BILLING CONFIG SE
+        # Blueprint: "Public vs Jarvis me behavior alag rakhta hai"
+        # Yeh billing mein define hota hai — brain mein tier nahi
+        # ====================================================
+
+        retry_enabled = config.get("meta_retry_enabled", False)
+        threshold     = config.get("meta_confidence_threshold", "low")
+
         retry = False
 
-        if length > 120:
-            confidence = "high"
-        elif length > 60:
-            confidence = "medium"
+        if retry_enabled:
+            if threshold == "medium" and confidence != "high":
+                # Enterprise + Jarvis — medium ya low pe bhi retry
+                retry = True
+            elif threshold == "low" and confidence == "low":
+                # Free, Paid, Ultra, Business — sirf clearly galat pe retry
+                retry = True
+        # ====================================================
+        # STEP 6: JARVIS EXTRA — SELF-CRITICAL MODE
+        # Jarvis ko sabse zyada strict hona chahiye
+        # Even "medium" confidence pe extra check
+        # ====================================================
+        self_critical = config.get("meta_self_critical", False)
 
-        # Jarvis is self-critical
-        if mode == "jarvis" and confidence != "high":
+        if self_critical and confidence == "medium" and retry_enabled:
+            # Jarvis medium pe bhi retry karta hai — highest standard
+            retry = True 
+        # ====================================================
+        # STEP 7: INTENT-AWARE OVERRIDE
+        # Research + incomplete — retry zaroori agar allowed
+        # ====================================================
+        if retry_enabled and is_incomplete and intent_state in ["research", "execution"]:
             retry = True
 
+           
+
+        # ====================================================
+        # RETURN — downstream format preserve
+        # meta["confidence"] → cognitive_profile + world_state
+        # meta["retry"]      → llm_generate(retry_prompt)
+        # meta["signals"]    → Phase 6A AlignmentFineTuner ke liye
+        # ====================================================
         return {
             "confidence": confidence,
-            "retry": retry
+            "retry": retry,
+            "signals": {
+                "length": length,
+                "has_structure": has_structure,
+                "has_reasoning": has_reasoning,
+                "is_incomplete": is_incomplete,
+                "score": score,
+                "ethical_weight": ethical_weight
+            }
         }
+        
     
+----------------------------------------------------------------------------------
 
 # =========================
 # PHASE 2.4: INTENT STATE ENGINE
@@ -3420,7 +3560,14 @@ Question:
     
 
     meta_engine = MetaCognitionEngine()
-    meta = meta_engine.evaluate(res, mode=mode, intent=intent_state)
+    meta = meta_engine.evaluate(
+    answer=res,
+    config=config,
+    intent_state=intent_state,
+    world_state=world_state,
+    cognitive_profile=cognitive_profile
+)
+
     cognitive_profile["confidence"] = meta.get("confidence", cognitive_profile.get("confidence", 0.6))
     world_state["cognitive_confidence"] = cognitive_profile["confidence"]
 
