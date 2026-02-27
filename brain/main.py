@@ -2041,8 +2041,6 @@ class MetaCognitionEngine:
             }
         }
         
-    
-----------------------------------------------------------------------------------
 
 # =========================
 # PHASE 2.4: INTENT STATE ENGINE
@@ -2119,36 +2117,120 @@ class IntentStateEngine:
 # =========================
 
 class SafetyConstraintEngine:
-    def evaluate(self, *, mode, intent, route, question):
+    def evaluate(self, *, intent, route, config=None, question):
         """
+        Blueprint:
+          ROLE  : LLM ko call karne se pehle FINAL GATE
+          DECIDES: Allow / Block / Reason
+          RULES : Intent-Based, Route-Based, Capability-Based (config se)
+
+          Kya NAHI karta:
+            - mode string compare nahi — config se
+            - Tool mgmt nahi (Phase 5.4)
+            - Cognitive load nahi (Phase 2.2)
+            - Moral lecture nahi, Emotion nahi, RLHF nahi
+
+          Tier need logic (config-driven):
+            Free       → sirf information — curious individual
+            Paid       → information + explanation — serious learner
+            Ultra Paid → information + analysis — professional individual
+            Business   → + research — company ko chahiye
+            Enterprise → + research + sensitive domain caution
+            Jarvis     → sab allowed — Tony Stark's Jarvis
+
         Rule-based safety & capability gating
         No RLHF, no emotion, no softness
         """
 
-        decision = {
-            "allow": True,
-            "reason": None
-        }
-
-        # 🔒 Public restrictions
-        if mode == "public":
-            if intent in ["execution", "research"]:
-                decision["allow"] = False
-                decision["reason"] = "Restricted capability in public mode"
-
-        # 🔥 Explicit dangerous signals (expand later)
+        config   = config or {}
+        decision = {"allow": True, "reason": None}
+        #===========================================
+                # ===== DANGEROUS KEYWORDS – PUBLIC ONLY =====
         dangerous_keywords = [
             "weapon", "bomb", "explosive", "build missile",
             "chemical synthesis", "harm", "kill"
         ]
+        
+        # Only block if user is NOT Jarvis (i.e., not allowed dangerous content)
+        if not config.get("allow_dangerous_keywords", False):
+            if any(k in question.lower() for k in dangerous_keywords):
+                decision["allow"] = False
+                decision["reason"] = "Potentially dangerous request"
+                return decision
+        #============================================
 
-        if any(k in question.lower() for k in dangerous_keywords):
+        # billing config se flags
+        allow_research        = config.get("allow_research",        False)
+        allow_execution       = config.get("allow_execution",       False)
+        allow_agency          = config.get("allow_agency",          False)
+        allow_ancient_tech    = config.get("allow_ancient_tech",    False)
+        allow_analysis        = config.get("allow_analysis",        False)
+        sensitive_domain_flag = config.get("sensitive_domain_caution", False)
+
+        # ====================================================
+        # GATE 1 — RESEARCH INTENT
+        # Individual tiers ko research nahi — wo researcher nahi hain
+        # Business + Enterprise + Jarvis ko chahiye
+        # ====================================================
+        if intent == "research" and not allow_research:
             decision["allow"] = False
-            decision["reason"] = "Potentially dangerous request"
+            decision["reason"] = "Research not available at this tier"
+            return decision
+
+        # ====================================================
+        # GATE 2 — ANALYSIS INTENT
+        # Free/Paid ko complex analysis nahi
+        # Ultra Paid se milta hai
+        # ====================================================
+        if intent == "analysis" and not allow_analysis:
+            decision["allow"] = False
+            decision["reason"] = "Analysis not available at this tier"
+            return decision
+
+        # ====================================================
+        # GATE 3 — EXECUTION INTENT
+        # Sirf Jarvis ko — public tiers mein execution sensitive
+        # ====================================================
+        if intent == "execution" and not allow_execution:
+            decision["allow"] = False
+            decision["reason"] = "Execution not available at this tier"
+            return decision
+
+        # ====================================================
+        # GATE 4 — AGENCY ROUTE
+        # Blueprint: "Phase 5 Agency sirf Jarvis ke liye"
+        # ====================================================
+        if route == "agency" and not allow_agency:
+            decision["allow"] = False
+            decision["reason"] = "Agency not available at this tier"
+            return decision
+
+        # ====================================================
+        # GATE 5 — ANCIENT TECH ROUTE
+        # Blueprint: "ancient viman/tech misuse prevent"
+        # Sirf Jarvis — Viman, Astra, Vedic decode
+        # ====================================================
+        if route == "ancient_tech" and not allow_ancient_tech:
+            decision["allow"] = False
+            decision["reason"] = "Ancient technology access not available at this tier"
+            return decision
+
+        # ====================================================
+        # GATE 6 — SENSITIVE DOMAIN FLAG (Enterprise extra)
+        # Large org mein political/legal/financial pe caution
+        # Sirf Enterprise mein active — config se
+        # ====================================================        
+        allow_sensitive_override = config.get("allow_sensitive_override", False)
+
+        if sensitive_domain_flag and route == "sensitive_domain":
+            if not allow_sensitive_override:
+                decision["allow"] = False
+                decision["reason"] = "Sensitive domain restricted at this tier"
+                return decision
+            # Jarvis mein allow_sensitive_override: True → gate pass hoga
 
         return decision
-
-
+---------------------------------------------------------------------------
 # =========================
 # PHASE 2.8: TRACE LOGGER
 # =========================
@@ -3240,9 +3322,9 @@ async def main(
      # ===== Phase 2.7 : Safety / Constraint =====
     safety_engine = SafetyConstraintEngine()
     safety = safety_engine.evaluate(
-        mode=mode,
         intent=intent_state,
         route=final_route,
+        config=config,
         question=question
     )
 

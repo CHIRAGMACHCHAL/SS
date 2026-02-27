@@ -53,6 +53,15 @@ class BillingLayer:
                 "meta_confidence_threshold": "medium",  # medium se neeche retry
                 "meta_self_critical": True,   # Jarvis only — extra flag
 
+                "allow_research":          True,
+                "allow_analysis":          True,
+                "allow_execution":         True,   # full power
+                "allow_agency":            True,   # full agency
+                "allow_ancient_tech":      True,   # Viman, Vedic, Astra decode
+                "sensitive_domain_caution":True,  # calculated risk — no blind blocks
+                "allow_dangerous_keywords": True,
+                "allow_sensitive_override": True,   # Jarvis ko block nahi karega sensitive domain bhi
+
                 "max_docs": 999999,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
@@ -80,6 +89,14 @@ class BillingLayer:
                 "cognitive_load_level": "expert",
                 "meta_retry_enabled": True,
                 "meta_confidence_threshold": "medium",
+
+                "allow_research":          True,
+                "allow_analysis":          True,
+                "allow_execution":         False,  # large org mein AGI execution nahi
+                "allow_agency":            False,
+                "allow_ancient_tech":      False,
+                "sensitive_domain_caution":True,   # extra — compliance critical
+                "allow_sensitive_override": False,  # Enterprise block hoga sensitive domain pe
 
                 "max_docs": 50,  
                 "deep_reasoning": True,  
@@ -109,6 +126,13 @@ class BillingLayer:
                 "meta_retry_enabled": True,
                 "meta_confidence_threshold": "low",  # sirf low pe retry
 
+                "allow_research":          True,   # company ko research chahiye
+                "allow_analysis":          True,
+                "allow_execution":         False,  # execution sensitive hai company mein
+                "allow_agency":            False,
+                "allow_ancient_tech":      False,
+                "sensitive_domain_caution":False,
+
                 "max_docs": 35,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
@@ -136,6 +160,13 @@ class BillingLayer:
                 "cognitive_load_level": "advanced",
                 "meta_retry_enabled": True,
                 "meta_confidence_threshold": "low",
+                
+                "allow_research":          False,  # individual hai — research nahi
+                "allow_analysis":          True,   # complex analysis milti hai
+                "allow_execution":         False,
+                "allow_agency":            False,
+                "allow_ancient_tech":      False,
+                "sensitive_domain_caution":False,
 
 
                 "max_docs": 25,  
@@ -165,6 +196,13 @@ class BillingLayer:
                 "cognitive_load_level": "standard",
                 "meta_retry_enabled": True,
                 "meta_confidence_threshold": "low",
+
+                "allow_research":          False,  # individual hai, research project nahi
+                "allow_analysis":          False,  # abhi basic level
+                "allow_execution":         False,
+                "allow_agency":            False,
+                "allow_ancient_tech":      False,
+                "sensitive_domain_caution":False,
  
 
 
@@ -195,6 +233,14 @@ class BillingLayer:
                 "cognitive_load_level": "minimal",
                 "meta_retry_enabled": True,  # Free users ke liye retry enabled hai, par sirf low confidence pe
                 "meta_confidence_threshold": "low",
+
+                "allow_research":          False,  # researcher nahi hai
+                "allow_analysis":          False,  # complex analysis nahi chahiye
+                "allow_execution":         False,
+                "allow_agency":            False,
+                "allow_ancient_tech":      False,
+                "sensitive_domain_caution":False,
+
 
 
                 "max_docs": 6,  
