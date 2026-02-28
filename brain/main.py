@@ -3,9 +3,9 @@ import os
 import logging
 from dataclasses import dataclass
 from typing import List, Dict, Any
-from pypdf import PdfReader
+
 from pathlib import Path
-from qdrant_client import QdrantClient
+
 from qdrant_client.models import VectorParams, Distance, PointStruct
 import uuid
 from sentence_transformers import SentenceTransformer
@@ -15,314 +15,18 @@ import boto3
 from botocore.exceptions import NoCredentialsError
 from memory.conversation_memory import ConversationMemory
 from memory.graph_sync import MemoryGraph   
-from tools.tools import ToolAgencyLayer   
+from tools.tools import ToolAgencyLayer 
+from memory.ingestion import Document  
 
-
-# =========================
-# PRODUCTION QDRANT CONFIG
-# =========================
-
-QDRANT_URL = os.getenv("QDRANT_URL")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-
-# PUBLIC_COLLECTION = "public_core"
-# JARVIS_COLLECTION = "jarvis_private"                                           yyyyyyyyyyyy
-# =========================
-# QDRANT CLOUD CLIENT (PERMANENT)
-# =========================
-
-qdrant = QdrantClient(
-    url=QDRANT_URL,
-    api_key=QDRANT_API_KEY,
+from memory.vector_store import VectorStoreManager
+from memory.ingestion import (
+    get_qdrant_client,
+    calculate_s3_fingerprint,
+    Document,
+    EMBEDDING_MODEL,
+    PUBLIC_COLLECTION,
+    JARVIS_COLLECTION
 )
-#-----------------------------------------------
-# =========================
-# AWS S3 CONFIG
-# =========================
-PUBLIC_S3_BUCKET = "mini-agi-public-pdfs"
-PUBLIC_S3_PREFIX = "documents/"
-
-JARVIS_S3_BUCKET = "mini-agi-jarvis-pdfs"
-JARVIS_S3_PREFIX = "private/"
-
-
-# S3_BUCKET_NAME = "mini-agi-public-pdfs"
-# S3_PREFIX = "documents/"   # optional folder inside bucket
-
-s3_client = boto3.client("s3")
-
-#------------------------------------------------
-  
-
-def calculate_data_fingerprint(data_dir):
-    hasher = hashlib.md5()
-    for file in sorted(os.listdir(data_dir)):
-        if file.lower().endswith(".pdf"):
-            path = os.path.join(data_dir, file)
-            hasher.update(file.encode())
-            hasher.update(str(os.path.getmtime(path)).encode())
-    return hasher.hexdigest()
-
-
-@dataclass
-class Document:
-    page_content: str
-    metadata: Dict[str, Any]
-
-
-#----------------------------------------------------------------
-# Configure logging                                                                                       #parmanent
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()]  # ❌ no file logs in Spaces
-)
-
-# Constants
-# DATA_DIR = r"D:\OLLAMA\data"
-
-
-# # ===== SYSTEM MODE =====
-# SYSTEM_MODE = "public"   # "public" or "jarvis"                                                      yyyyyyyyyyyy
-
-EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
-#-----------------------------------------------
-# VECTOR_STORE_NAME = "simple-rag"
-# def get_collection_name(system_mode: str):
-#     if system_mode == "jarvis":                                                                   yyyyyyyyyyyy
-#         return JARVIS_COLLECTION
-#     return PUBLIC_COLLECTION
-#-------------------------------------------
-#-----------------------------------------------
-def download_pdfs_from_s3(bucket_name, prefix=""):
-    """
-    Downloads PDFs from S3 into temporary memory
-    Returns list of Document objects
-    """
-    documents = []
-
-    try:
-        paginator = s3_client.get_paginator("list_objects_v2")
-
-        for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
-        
-            if "Contents" not in page:
-                continue
-        
-            for obj in page["Contents"]:
-        
-                key = obj["Key"]
-        
-                if not key.lower().endswith(".pdf"):
-                    continue
-        
-                file_obj = s3_client.get_object(
-                    Bucket=bucket_name,
-                    Key=key
-                )
-        
-        # response = s3_client.list_objects_v2(
-        #     Bucket=bucket_name,
-        #     Prefix=prefix
-        # )
-
-        # if "Contents" not in response:
-        #     logging.info("No files found in S3 bucket.")
-        #     return []
-
-        # for obj in response["Contents"]:
-        #     key = obj["Key"]
-
-        #     if key.lower().endswith(".pdf"):
-        #         file_obj = s3_client.get_object(
-        #             Bucket=bucket_name,
-        #             Key=key
-        #         )
-
-                pdf_reader = PdfReader(file_obj["Body"])
-
-                for page_num, page in enumerate(pdf_reader.pages):
-                    text = page.extract_text() or ""
-
-                    documents.append(
-                        Document(
-                            page_content=text,
-                            metadata={
-                                "source": key,
-                                "page": page_num
-                            }
-                        )
-                    )
-
-                logging.info(f"Loaded from S3: {key}")
-
-    except NoCredentialsError:
-        logging.error("AWS credentials not found.")
-        return []
-
-    return documents
-
-#----------------------------------------------------
-
-def ingest_pdfs_from_folder(data_dir):
-    """ALL PDFs from a folder (LangChain-free, identical output)"""
-    all_docs = []
-
-    for file in os.listdir(data_dir):
-        if file.lower().endswith(".pdf"):
-            pdf_path = os.path.join(data_dir, file)
-
-            reader = PdfReader(pdf_path)
-
-            for page_num, page in enumerate(reader.pages):
-                text = page.extract_text() or ""
-
-                doc = Document(
-                    page_content=text,
-                    metadata={
-                        "source": file,
-                        "page": page_num
-                    }
-                )
-
-                all_docs.append(doc)
-
-            logging.info(f"Loaded PDF: {file}")
-
-    return all_docs
-
-def split_text_with_overlap(text: str, chunk_size: int, overlap: int):
-    separators = ["\n\n", "\n", " "]
-    chunks = []
-
-    start = 0
-    text_length = len(text)
-
-    while start < text_length:
-        end = min(start + chunk_size, text_length)
-        chunk = text[start:end]
-
-        # try soft split
-        for sep in separators:
-            idx = chunk.rfind(sep)
-            if idx != -1 and idx > chunk_size * 0.5:
-                end = start + idx
-                chunk = text[start:end]
-                break
-
-        chunks.append(chunk.strip())
-
-        if end >= text_length:
-            break
-
-        start = max(end - overlap, 0)
-
-    return chunks
-
-def split_documents(documents):
-    """LangChain-free document splitter (identical behavior)"""
-    chunk_size = 1200
-    overlap = 300
-
-    all_chunks = []
-
-    for doc in documents:
-        text_chunks = split_text_with_overlap(
-            doc.page_content,
-            chunk_size=chunk_size,
-            overlap=overlap
-        )
-
-        for i, chunk in enumerate(text_chunks):
-            new_doc = Document(
-                page_content=chunk,
-                metadata={
-                    **doc.metadata,
-                    "chunk": i
-                }
-            )
-            all_chunks.append(new_doc)
-
-    logging.info("Documents split into chunks.")
-    return all_chunks
-#                      step 4
-class SentenceTransformerEmbeddings:
-    """
-    Drop-in replacement for OllamaEmbeddings
-    Interface SAME rakha gaya hai
-    """
-
-    def __init__(self, model_name: str):
-        self.model = SentenceTransformer(model_name)
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        embeddings = self.model.encode(
-            texts,
-            convert_to_numpy=True,
-            normalize_embeddings=True
-        )
-        return embeddings.tolist()
-
-    def embed_query(self, text: str) -> List[float]:
-        embedding = self.model.encode(
-            text,
-            convert_to_numpy=True,
-            normalize_embeddings=True
-        )
-        return embedding.tolist()
-    
-
-class QdrantVectorStore:
-    def __init__(self, qdrant_client, collection_name, embedding_model):
-        self.qdrant = qdrant_client
-        self.collection = collection_name
-        self.embedder = SentenceTransformerEmbeddings(embedding_model)
-
-
-    def similarity_search(self, query: str, k: int = 4):
-        # query_vector = self.embedder.embed_query(query)
-        query_vector = self.embedder.embed_query(query)
-
-        results = self.qdrant.search(
-            collection_name=self.collection,
-            query_vector=query_vector,
-            limit=k
-        )
-
-        docs = []
-        for r in results:
-            docs.append(
-                Document(
-                    page_content=r.payload["text"],
-                    metadata=r.payload
-                )
-            )
-
-        return docs
-
-def vector_db_has_data(collection_name):
-    try:
-        info = qdrant.get_collection(collection_name)
-        return info.points_count > 0
-    except Exception:
-        return False
-
-def calculate_s3_fingerprint(bucket_name, prefix=""):
-    hasher = hashlib.md5()
-
-    paginator = s3_client.get_paginator("list_objects_v2")
-
-    for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
-        if "Contents" not in page:
-            continue
-
-        for obj in sorted(page["Contents"], key=lambda x: x["Key"]):
-            key = obj["Key"]
-            hasher.update(key.encode())
-            hasher.update(str(obj["LastModified"]).encode())
-            hasher.update(str(obj["Size"]).encode())
-
-    return hasher.hexdigest()
 
 
 def create_or_load_vector_db(data_dir=None, system_mode="public"):
@@ -576,6 +280,7 @@ def create_or_load_vector_db(data_dir=None, system_mode="public"):
         collection_name=collection_name,
         embedding_model=EMBEDDING_MODEL
     )
+#======================================================================================================
 #=========================================================================================================================================
 #..............Phase 2.5 : CONTEXTUAL ENRICHER ..........
 # class MemoryGraphAdapter:
@@ -3202,8 +2907,6 @@ async def main(
 
     logging.info(f"[PHASE 6 TRAINING] → {training_result}")
 
-    # vector_db = create_or_load_vector_db(DATA_DIR)
-
     # Initialize the language model
           
 
@@ -3936,8 +3639,6 @@ Question:
     # })
 
     
-
-
 
     # ===== Phase 2.6 : Response Assembly =====
     assembler = ResponseAssemblyEngine()
