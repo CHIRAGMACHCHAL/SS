@@ -62,7 +62,7 @@ class Orchestrator:
         # 4. Call AGI Brain (main.py)
         try:
             start_time = time.time()
-            brain_output = agi_brain(**brain_payload)
+            brain_output = await agi_brain(**brain_payload)
             elapsed = time.time() - start_time
             self.log(f"AGI Brain completed in {elapsed:.2f} seconds")
         except Exception as e:
@@ -72,7 +72,8 @@ class Orchestrator:
         # 5. Production retry (server issues ke liye, blueprint mein nahi)
         if not brain_output:
             self.log("Retrying AGI Brain call", "WARNING")
-            brain_output = agi_brain(**brain_payload)  # One retry
+            brain_output = await agi_brain(**brain_payload)  # One retry
+        
 
         # 6. Update memory (Layer 8)
         await self._update_memory(conversation_id, question, brain_output.get("final_answer", ""))
