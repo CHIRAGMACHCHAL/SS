@@ -7,6 +7,7 @@ from brain.main import main as agi_brain  # Tere AGI brain call (Layer 6)
 from memory.conversation_memory import ConversationMemory
 from memory.graph_sync import MemoryGraph
 from memory.storage import MemoryStorageLayer
+from memory.conversation_memory import ConversationMemory
 
 # =========================
 # ENVIRONMENT VARIABLES
@@ -26,6 +27,7 @@ class Orchestrator:
     def __init__(self):
         self.log_level = LOG_LEVEL
         self.storage = MemoryStorageLayer()
+        self.memory_layer = ConversationMemory()
 
     def log(self, message: str, level: str = "INFO"):
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -42,7 +44,7 @@ class Orchestrator:
         storage_config = await self.storage.get_storage_config(user_email)
         
         # 1. Memory attach (Layer 8 - real call when Layer 8 done)
-        memory = self._get_memory(conversation_id)
+        memory = await self._get_memory(conversation_id)
         self.log(f"Memory attached (length: {len(memory)} chars)")
 
         # 2. Tools enable per config
@@ -73,18 +75,18 @@ class Orchestrator:
             brain_output = agi_brain(**brain_payload)  # One retry
 
         # 6. Update memory (Layer 8)
-        self._update_memory(conversation_id, question, brain_output.get("final_answer", ""))
+        await self._update_memory(conversation_id, question, brain_output.get("final_answer", ""))
 
         return {
             "response": brain_output.get("final_answer", "No response"),
             "success": True,
             "processing_time": elapsed
         }
+    async def _get_memory(self, conversation_id: str) -> str:
+        history = await self.memory_layer.get_history(conversation_id)
+        return history or ""
 
-    def _get_memory(self, conversation_id: str) -> str:
-        # Real Layer 8 call (placeholder abhi)
-        return ""  # Replace with real when Layer 8 done
-
-    def _update_memory(self, conversation_id: str, question: str, answer: str):
-        # Real Layer 8 call (placeholder abhi)
-        pass  # Replace with real when Layer 8 done
+    async def _update_memory(self, conversation_id: str, question: str, answer: str):
+        await self.memory_layer.save_message(conversation_id, "user", question)
+        await self.memory_layer.save_message(conversation_id, "assistant", answer)
+        pass

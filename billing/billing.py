@@ -62,11 +62,16 @@ class BillingLayer:
                 "allow_dangerous_keywords": True,
                 "allow_sensitive_override": True,   # Jarvis ko block nahi karega sensitive domain bhi
 
+                "allow_goal_inference":       True,
+                "allow_plan_synthesis":       True,
+                "allow_action_selection":     True,
+                "allow_tool_invocation":      True,
+                "allow_execution_monitoring": True,
+
                 "max_docs": 999999,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
-                "query_complexity": "high",  
-                "allow_agency": True,  
+                "query_complexity": "high",    
                 "allow_self_training": True,  
                 "max_tokens": 32768,  
                 "collection": "jarvis_private",  
@@ -98,11 +103,16 @@ class BillingLayer:
                 "sensitive_domain_caution":True,   # extra — compliance critical
                 "allow_sensitive_override": False,  # Enterprise block hoga sensitive domain pe
 
+                "allow_goal_inference":       False,
+                "allow_plan_synthesis":       False,
+                "allow_action_selection":     False,
+                "allow_tool_invocation":      False,
+                "allow_execution_monitoring": False,
+
                 "max_docs": 50,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
-                "query_complexity": "high",  
-                "allow_agency": False,  
+                "query_complexity": "high",    
                 "allow_self_training": False,  
                 "max_tokens": 20000,  
                 "collection": "public_core",  
@@ -133,11 +143,16 @@ class BillingLayer:
                 "allow_ancient_tech":      False,
                 "sensitive_domain_caution":False,
 
+                "allow_goal_inference":       False,
+                "allow_plan_synthesis":       False,
+                "allow_action_selection":     False,
+                "allow_tool_invocation":      False,
+                "allow_execution_monitoring": False,
+
                 "max_docs": 35,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
-                "query_complexity": "high",  
-                "allow_agency": False,  
+                "query_complexity": "high",   
                 "allow_self_training": False,  
                 "max_tokens": 15000,  
                 "collection": "public_core",  
@@ -168,12 +183,17 @@ class BillingLayer:
                 "allow_ancient_tech":      False,
                 "sensitive_domain_caution":False,
 
+                "allow_goal_inference":       False,
+                "allow_plan_synthesis":       False,
+                "allow_action_selection":     False,
+                "allow_tool_invocation":      False,
+                "allow_execution_monitoring": False,
+
 
                 "max_docs": 25,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
                 "query_complexity": "high",  
-                "allow_agency": False,  
                 "allow_self_training": False,  
                 "max_tokens": 12000,  
                 "collection": "public_core",  
@@ -203,6 +223,12 @@ class BillingLayer:
                 "allow_agency":            False,
                 "allow_ancient_tech":      False,
                 "sensitive_domain_caution":False,
+
+                "allow_goal_inference":       False,
+                "allow_plan_synthesis":       False,
+                "allow_action_selection":     False,
+                "allow_tool_invocation":      False,
+                "allow_execution_monitoring": False,
  
 
 
@@ -210,7 +236,6 @@ class BillingLayer:
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
                 "query_complexity": "normal",  
-                "allow_agency": False,  
                 "allow_self_training": False,  
                 "max_tokens": 6000,  
                 "collection": "public_core",  
@@ -241,13 +266,18 @@ class BillingLayer:
                 "allow_ancient_tech":      False,
                 "sensitive_domain_caution":False,
 
+                "allow_goal_inference":       False,
+                "allow_plan_synthesis":       False,
+                "allow_action_selection":     False,
+                "allow_tool_invocation":      False,
+                "allow_execution_monitoring": False,
+
 
 
                 "max_docs": 6,  
                 "deep_reasoning": False,  
                 "use_emergent_concepts": False,  
-                "query_complexity": "low",  
-                "allow_agency": False,  
+                "query_complexity": "low",    
                 "allow_self_training": False,  
                 "max_tokens": 3000,  
                 "collection": "public_core",  

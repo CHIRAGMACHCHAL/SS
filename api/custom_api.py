@@ -101,16 +101,15 @@ def handle_client(conn, addr):
         auth_header = headers.get("Authorization", "")
         token = auth_header.replace("Bearer ", "")
         user_data = AuthEngine.verify_jwt(token)
-        user = verify_auth(auth_header)
-        if not user_data or not user:
+        if not user_data:
             conn.send(build_response("401 Unauthorized", json.dumps({"error": "Invalid token"})))
             conn.close()
             return
         user_email = user_data.get("email")
 
+
         # Subscription verify
         config = BillingLayer.generate_config(user_email)
-        config = verify_subscription(user)
         if not config:
             conn.send(build_response("403 Forbidden", json.dumps({"error": "Subscription invalid"})))
             conn.close()
@@ -131,8 +130,8 @@ def handle_client(conn, addr):
 
 
         # Orchestrator call
-        response = call_orchestrator(request["message"], config, request["conversation_id"])
-        conn.send(build_response("200 OK", json.dumps({"response": response})))
+        # response = call_orchestrator(request["message"], config, request["conversation_id"])
+        # conn.send(build_response("200 OK", json.dumps({"response": response})))
     else:
         conn.send(build_response("404 Not Found", json.dumps({"error": "Not found"})))
 

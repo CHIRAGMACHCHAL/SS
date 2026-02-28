@@ -18,7 +18,7 @@ class ToolAgencyLayer:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.tier = config.get("tier", "free")
-        self.is_jarvis = self.tier == "jarvis"
+        self.is_jarvis = config.get("allow_agency", False)
         self.allowed_tools = config.get("allowed_tools", [])
 
     async def execute(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -168,4 +168,7 @@ class ToolAgencyLayer:
 
     def is_agency_allowed(self) -> bool:
         """Full agency only Jarvis tier mein"""
-        return self.is_jarvis
+        return self.config.get("allow_agency", False) 
+
+    
+           

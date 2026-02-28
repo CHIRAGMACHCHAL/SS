@@ -14,7 +14,8 @@ import hashlib
 import boto3
 from botocore.exceptions import NoCredentialsError
 from memory.conversation_memory import ConversationMemory
-from memory.graph_sync import MemoryGraph     
+from memory.graph_sync import MemoryGraph   
+from tools.tools import ToolAgencyLayer   
 
 
 # =========================
@@ -1713,67 +1714,254 @@ class MetaRetryEngine:
         return cognitive_profile
 
 #===============================================================================================
-# Phase 5.1 — Goal Formation                                          sbse last me karo, kyunki yeh sabse high-level hai — ye sirf jarvis mode me hona chahiye — yeh question se directly goal banayega, bypassing all layers of intent/world/cognition — kyunki jarvis ko full freedom dena hai to interpret and act
+# ================================
+# PHASE 5 — AGENCY (JARVIS ONLY)
+# Blueprint: "Assistant se Entity banta hai yahan"
+# Poora Phase 5 sirf Jarvis ke liye
+# Public tiers mein inactive
+# ================================
 
+
+# Phase 5.1 — Goal Formation
+# Blueprint: "User jo bolta hai ≠ asal goal — hidden intent samajhna"
 class GoalFormationEngine:
-    def infer(self, question, intent, world_state):
+    def infer(self, question: str, intent: str, world_state: dict, config: dict = None) -> dict:
+        """
+        Jarvis-only.
+        Question se REAL goal nikalna — surface request nahi.
+        Hidden intent + world context se goal reconstruct karna.
+        """
+        config = config or {}
+        if not config.get("allow_goal_inference", False):
+            return {"inferred_goal": question, "intent": intent,
+                    "world_context": world_state, "blocked": True}
+        
+
+        raw_goal = question.strip()
+        domain   = world_state.get("domain", "general")
+        ethical  = world_state.get("ethical_weight", "low")
+
+        # Real goal inference — surface se deeper intent
+        # Blueprint: "Fast understanding", "Decode ancient tech", "Build system"
+        if intent == "research":
+            inferred_goal = f"Deep decode and synthesis required: {raw_goal}"
+        elif intent == "execution":
+            inferred_goal = f"End-to-end execution required: {raw_goal}"
+        elif intent == "analysis":
+            inferred_goal = f"Multi-angle analysis required: {raw_goal}"
+        else:
+            inferred_goal = f"Understand and respond: {raw_goal}"
+
         return {
-            "goal": question,
-            "intent": intent,
-            "world_context": world_state
+            "raw_question":    raw_goal,
+            "inferred_goal":   inferred_goal,
+            "intent":          intent,
+            "domain":          domain,
+            "ethical_weight":  ethical,
+            "world_context":   world_state
         }
 
 
 # Phase 5.2 — Agency Safety
-
+# Blueprint Phase 5.6: "AI apne upar question kare — mujhe yeh karna chahiye ya nahi"
+# Checks: Long-term harm, Dependency creation, Power misuse, Self-Expansion
 class AgencySafetyEngine:
-    def evaluate(self, goal, mode):
-        if mode != "jarvis":
-            return {"allow": False, "reason": "Agency disabled"}
-        return {"allow": True}
-# Phase 5.3 — Plan Synthesis
+    def evaluate(self, goal: dict, config: dict) -> dict:
+        """
+        Jarvis-only.
+        Tier agnostic — config se.
+        4 checks: harm, dependency, power misuse, self-expansion
+        """
 
+        allow_agency = config.get("allow_agency", False)
+
+        # Hard gate — agency allowed hai ya nahi (billing se)
+        if not allow_agency:
+            return {"allow": False, "reason": "Agency not available at this tier"}
+
+        inferred_goal = goal.get("inferred_goal", "")
+        ethical_weight = goal.get("ethical_weight", "low")
+
+        # Check 1 — Long-term harm potential
+        if ethical_weight == "high":
+            return {"allow": False, "reason": "High ethical risk — agency paused"}
+
+        # Check 2 — Self-expansion attempt
+        if "self_expand" in inferred_goal.lower() or "override system" in inferred_goal.lower():
+            return {"allow": False, "reason": "Self-expansion not permitted"}
+
+        # Check 3 — Power misuse
+        if "manipulate" in inferred_goal.lower() or "control all" in inferred_goal.lower():
+            return {"allow": False, "reason": "Power misuse detected"}
+
+        return {"allow": True, "reason": None}
+
+
+# Phase 5.3 — Plan Synthesis
+# Blueprint: "Goal ko steps mein break karna, dependency samajhna"
 class PlanSynthesisEngine:
-    def build(self, goal, world_state):
-        return [
-            {"step": 1, "name": "understand_goal"},
-            {"step": 2, "name": "reason"},
-            {"step": 3, "name": "respond"}
-        ]
+    def build(self, goal: dict, world_state: dict, config: dict = None) -> list:
+        """
+        Jarvis-only.
+        Goal aur intent ke hisaab se dynamic plan banana.
+        Har goal ke liye alag steps — static nahi.
+        """
+        config = config or {}
+        if not config.get("allow_plan_synthesis", False):
+            return []
+
+
+        intent = goal.get("intent", "general")
+        domain = goal.get("domain", "general")
+
+        # Intent-driven dynamic plan
+        if intent == "research":
+            plan = [
+                {"step": 1, "name": "understand_goal",    "required": True},
+                {"step": 2, "name": "retrieve_knowledge", "required": True},
+                {"step": 3, "name": "cross_reference",    "required": domain in ["ancient_tech", "vedic", "science"]},
+                {"step": 4, "name": "synthesize",         "required": True},
+                {"step": 5, "name": "validate",           "required": True},
+            ]
+        elif intent == "execution":
+            plan = [
+                {"step": 1, "name": "understand_goal",  "required": True},
+                {"step": 2, "name": "plan_steps",       "required": True},
+                {"step": 3, "name": "execute",          "required": True},
+                {"step": 4, "name": "monitor_result",   "required": True},
+            ]
+        elif intent == "analysis":
+            plan = [
+                {"step": 1, "name": "understand_goal",  "required": True},
+                {"step": 2, "name": "multi_angle_view", "required": True},
+                {"step": 3, "name": "synthesize",       "required": True},
+            ]
+        else:
+            plan = [
+                {"step": 1, "name": "understand_goal", "required": True},
+                {"step": 2, "name": "reason",          "required": True},
+                {"step": 3, "name": "respond",         "required": True},
+            ]
+
+        return plan
+
 
 # Phase 5.4 — Action Selection
-
+# Blueprint: "Har step execute hona chahiye ya nahi — DO/NOT DO"
+# IS STEP NECESSARY? OVER-HELPING? USER KO KHUD KARNA CHAHIYE?
 class ActionSelectionEngine:
-    def select(self, plan, cognitive_profile):
+    def select(self, plan: list, cognitive_profile: dict, config: dict = None) -> list:
+        """
+        Jarvis-only.
+        Sirf required steps execute karo.
+        Over-helping band karo.
+        Deep reasoning flag se priority set karo.
+        """
+        config = config or {}
+        if not config.get("allow_action_selection", False):
+            return []
+        
+
+
         actions = []
-        for p in plan:
+        deep = cognitive_profile.get("deep_reasoning", False)
+
+        for step in plan:
+            # DO/NOT DO decision — required nahi toh skip
+            if not step.get("required", True):
+                continue
+
             actions.append({
-                "action": p["name"],
-                "priority": "high" if cognitive_profile.get("deep_reasoning") else "normal"
+                "action":   step["name"],
+                "step":     step["step"],
+                "priority": "high" if deep else "normal",
+                "execute":  True
             })
+
         return actions
 
+
 # Phase 5.5 — Tool Invocation
-
+# Blueprint: "Memory likhna, Retrieval, Model reasoning, External tool call"
+# "AI permission maangti nahi — decide karti hai"
 class ToolInvocationEngine:
-    def invoke(self, actions):
+    def invoke(self, actions: list, tools_layer=None, config: dict = None) -> list:
+        """
+        Jarvis-only.
+        Actions ko actual tool calls se map karna.
+        tools_layer inject hoga — tools.py se.
+        Abhi structured placeholder — tools.py integration hook ready.
+        """
+        config = config or {}
+        if not config.get("allow_tool_invocation", False):
+            return []
+        
+
         results = []
+
         for action in actions:
+            if not action.get("execute", False):
+                continue
+
+            action_name = action["action"]
+
+            # Tool mapping — action name → actual tool
+            # Future: tools_layer.execute(tool_name, params)
+            
+            tool_map = {
+                "retrieve_knowledge": "knowledge_retrieval",
+                "cross_reference":    "scripture_cross_reference",
+                "execute":            "code_execution",
+                "monitor_result":     "execution_monitor",
+                "synthesize":         "reasoning_engine",
+                "multi_angle_view":   "hybrid_engine",
+            }
+
+            tool_used = tool_map.get(action_name, "llm_reasoning")
+
+            if tools_layer:
+                import asyncio
+                result = asyncio.run(tools_layer.execute(tool_used, {"query": action_name}))
+                status = "done" if result.get("success") else "failed"
+            else:
+                status = "done"
+
             results.append({
-                "action": action["action"],
-                "status": "done"
+                "action":    action_name,
+                "tool_used": tool_used,
+                "status":    status,
+                "step":      action.get("step")
             })
+
         return results
+
+
 # Phase 5.6 — Execution Monitoring
-
+# Blueprint: "AI dekhe — Action fail hua? Partial success? Unexpected output?"
 class ExecutionMonitorEngine:
-    def evaluate(self, results):
-        success = all(r["status"] == "done" for r in results)
-        return {
-            "success": success,
-            "results": results
-        }
+    def evaluate(self, results: list, config: dict = None) -> dict:
+        """
+        Jarvis-only.
+        Results check karo — success, partial, fail.
+        Unexpected output detect karo.
+        """
+        config = config or {}
+        if not config.get("allow_execution_monitoring", False):
+            return {"success": False, "status": "disabled", "results": []}
+        
 
+        if not results:
+            return {"success": False, "status": "no_actions", "results": []}
+
+        failed  = [r for r in results if r.get("status") != "done"]
+        success = len(failed) == 0
+
+        return {
+            "success":        success,
+            "status":         "complete" if success else "partial",
+            "failed_actions": failed,
+            "results":        results
+        }
 
 # =========================
 # PHASE 6A: ALIGNMENT FINETUNING
@@ -2230,7 +2418,7 @@ class SafetyConstraintEngine:
             # Jarvis mein allow_sensitive_override: True → gate pass hoga
 
         return decision
----------------------------------------------------------------------------
+
 # =========================
 # PHASE 2.8: TRACE LOGGER
 # =========================
@@ -3526,22 +3714,22 @@ Question:
     # ================================
     
     agency_result = None
-    
-    if mode == "jarvis" and intent_state in ["research", "execution"]:
+    if config.get("allow_agency", False) and intent_state in ["research", "execution", "analysis"]:
     
         # ---- Phase 5.1 : Goal Formation ----
         goal_engine = GoalFormationEngine()
         goal = goal_engine.infer(
             question=question,
             intent=intent_state,
-            world_state=world_state
+            world_state=world_state,
+            config=config
         )
     
         # ---- Phase 5.2 : Agency Safety ----
         agency_safety = AgencySafetyEngine()
         agency_check = agency_safety.evaluate(
             goal=goal,
-            mode=mode
+            config=config
         )
     
         if agency_check["allow"]:
@@ -3550,23 +3738,26 @@ Question:
             plan_engine = PlanSynthesisEngine()
             plan = plan_engine.build(
                 goal=goal,
-                world_state=world_state
+                world_state=world_state,
+                config=config
             )
     
             # ---- Phase 5.4 : Action Selection ----
             action_engine = ActionSelectionEngine()
             actions = action_engine.select(
                 plan=plan,
-                cognitive_profile=cognitive_profile
+                cognitive_profile=cognitive_profile,
+                config=config
             )
     
             # ---- Phase 5.5 : Tool Invocation ----
+            tools_layer = ToolAgencyLayer(config)
             tool_engine = ToolInvocationEngine()
-            action_results = tool_engine.invoke(actions)
+            action_results = tool_engine.invoke(actions, tools_layer=tools_layer, config=config)
     
             # ---- Phase 5.6 : Execution Monitoring ----
             monitor = ExecutionMonitorEngine()
-            execution_report = monitor.evaluate(action_results)
+            execution_report = monitor.evaluate(action_results, config=config)
     
             agency_result = {
                 "goal": goal,
