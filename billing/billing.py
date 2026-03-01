@@ -253,24 +253,24 @@ class BillingLayer:
             return {  
                 "tier": "free",
 
-                "response_strategy_mode": "basic",
-                "capability_level": "base",
-                "cognitive_load_level": "minimal",
-                "meta_retry_enabled": True,  # Free users ke liye retry enabled hai, par sirf low confidence pe
-                "meta_confidence_threshold": "low",
+                "response_strategy_mode": "basic",#2-----------------------------
+                "capability_level": "base", #3-------------------
+                "cognitive_load_level": "minimal",#1----------------------------
+                "meta_retry_enabled": True,#4--------------------  # Free users ke liye retry enabled hai, par sirf low confidence pe 
+                "meta_confidence_threshold": "low", #5--------------------------
 
-                "allow_research":          False,  # researcher nahi hai
-                "allow_analysis":          False,  # complex analysis nahi chahiye
-                "allow_execution":         False,
-                "allow_agency":            False,
-                "allow_ancient_tech":      False,
+                "allow_research":          False,#12--------------------  # researcher nahi hai
+                "allow_analysis":          False,#13----------------  # complex analysis nahi chahiye
+                "allow_execution":         False,#14-------------------------------
+                "allow_agency":            False, #6-----------------------------------------
+                "allow_ancient_tech":      False,#15---------------------------------------
                 "sensitive_domain_caution":False,
 
-                "allow_goal_inference":       False,
-                "allow_plan_synthesis":       False,
-                "allow_action_selection":     False,
-                "allow_tool_invocation":      False,
-                "allow_execution_monitoring": False,
+                "allow_goal_inference":       False, #7---------------------------------------
+                "allow_plan_synthesis":       False,#8---------------------------------------
+                "allow_action_selection":     False,#9--------------------------------------
+                "allow_tool_invocation":      False,#10-------------------------------------
+                "allow_execution_monitoring": False,#11----------------------------------
 
 
 

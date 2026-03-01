@@ -504,35 +504,127 @@ class ResponseStrategyEngine:
 class ResponseAssemblyEngine:
     def assemble(self, raw_answer: str, strategy: dict):
         """
-        Shapes the final answer based on response strategy
-        WITHOUT changing factual content
+        Blueprint Phase 2.6 — Brain ka mouth.
+        Strategy ke EVERY flag ko actually use karo.
+        Factual content change nahi hota — sirf shape/structure.
         """
-
         answer = raw_answer.strip()
 
-        # ===== Verbosity Control =====
-        if strategy["verbosity"] == "low":
+        # ===== VERBOSITY — Blueprint: "kitna bolna hai" =====
+        verbosity = strategy.get("verbosity", "medium")
+        if verbosity == "low":
             answer = " ".join(answer.split()[:80])
+        elif verbosity == "medium":
+            answer = " ".join(answer.split()[:200])
+        elif verbosity == "high":
+            answer = " ".join(answer.split()[:400])
+        elif verbosity == "maximum":
+            pass  # Jarvis — no truncation, full depth
 
-        elif strategy["verbosity"] == "medium":
-            answer = " ".join(answer.split()[:150])
+        # ===== STRUCTURE — Blueprint: "kaise present karna hai" =====
+        structure = strategy.get("structure", "plain")
 
-        # ===== Structural Control =====
-        if strategy["structure"] == "steps":
-            answer = "Steps:\n" + answer
+        if structure == "steps":
+            answer = "**Steps:**\n\n" + answer
 
-        elif strategy["structure"] == "sectioned":
-            answer = "Analysis:\n" + answer
+        elif structure == "step-lite":
+            answer = "**Overview:**\n" + answer
 
-        # ===== Style Injection (light, non-invasive) =====
-        if strategy["style"] == "analytical":
-            answer = "Here is a detailed analysis:\n\n" + answer
+        elif structure == "step-by-step":
+            answer = "**Step-by-Step:**\n\n" + answer
 
-        elif strategy["style"] == "instructional":
-            answer = "Follow these instructions carefully:\n\n" + answer
+        elif structure == "detailed-steps":
+            answer = "**Detailed Execution Steps:**\n\n" + answer
+
+        elif structure == "sectioned":
+            answer = "**Analysis:**\n\n" + answer
+
+        elif structure == "report":
+            answer = "**Report:**\n\n" + answer + "\n\n---\n*End of Report*"
+
+        elif structure == "structured":
+            answer = "**Structured Response:**\n\n" + answer
+
+        elif structure == "detailed":
+            answer = "**Detailed Analysis:**\n\n" + answer
+
+        elif structure == "multi-perspective":
+            answer = "**Multi-Perspective Analysis:**\n\n" + answer
+
+        elif structure == "comparative":
+            answer = "**Comparative Analysis:**\n\n" + answer
+
+        elif structure == "multi-layer":
+            answer = "**Multi-Layer Analysis:**\n\n" + answer
+
+        elif structure == "comprehensive":
+            answer = "**Comprehensive Analysis:**\n\n" + answer
+
+        elif structure == "layered":
+            answer = "**Layered Reasoning:**\n\n" + answer
+
+        elif structure == "multi-layer-plan":
+            answer = "**Strategic Multi-Layer Plan:**\n\n" + answer
+
+        elif structure == "comparative-deep":
+            answer = "**Deep Comparative Analysis:**\n\n" + answer
+
+        elif structure == "connected":
+            answer = "**Connected Memory Context:**\n\n" + answer
+
+        elif structure == "vedic-scientific-report":
+            # Blueprint: "Jarvis research intent — Vedic + Modern synthesis"
+            answer = (
+                "**Vedic-Scientific Analysis Report**\n\n"
+                + answer
+                + "\n\n---\n"
+                + "*Ancient knowledge decoded through modern scientific lens. "
+                + "Cross-referenced: Vedic scriptures + Contemporary science.*"
+            )
+
+        elif structure == "innovation-report":
+            # Blueprint: "invention intent — new technology creation"
+            answer = (
+                "**Innovation Report — Vedic-Scientific Synthesis**\n\n"
+                + answer
+                + "\n\n---\n"
+                + "*Cross-domain synthesis: Ancient Bharatiya wisdom + Modern engineering.*"
+            )
+
+        # ===== STYLE — Blueprint: "kis andaaz mein bolna hai" =====
+        style = strategy.get("style", "neutral")
+
+        if style == "analytical":
+            answer = "**Analysis:**\n\n" + answer
+        elif style == "instructional":
+            answer = "**Instructions:**\n\n" + answer
+        elif style == "deep-analytical":
+            answer = "**Deep Analysis:**\n\n" + answer
+        elif style == "multi-layer-reasoning":
+            answer = "**Multi-Layer Reasoning:**\n\n" + answer
+        elif style == "strategic-vedic":
+            answer = "**Strategic Vedic Analysis:**\n\n" + answer
+        elif style == "critical-vedic":
+            answer = "**Critical Vedic Perspective:**\n\n" + answer
+        elif style == "creative-technical":
+            answer = "**Creative-Technical Synthesis:**\n\n" + answer
+        elif style == "technical":
+            answer = "**Technical Analysis:**\n\n" + answer
+        elif style == "precise":
+            answer = "**Precise Analysis:**\n\n" + answer
+
+        # ===== EXTRA FLAGS — Blueprint: Jarvis ke special markers =====
+        if strategy.get("multi_perspective"):
+            answer += "\n\n---\n*Multiple perspectives synthesized.*"
+
+        if strategy.get("cross_domain"):
+            # Blueprint: "Ancient + Modern + Scientific cross-domain"
+            answer += "\n\n---\n*Cross-domain reasoning: Ancient Bharatiya knowledge + Modern science.*"
+
+        if strategy.get("include_verification"):
+            answer += "\n\n---\n*Claims cross-referenced with available knowledge sources.*"
 
         return answer
-
 # =========================
 # PHASE 3: WORLD MODEL ENGINE
 # =========================
@@ -573,7 +665,13 @@ class WorldModelEngine:
         # Blueprint logic: Agar profile 'deep_reasoning' hai toh complexity badhao
         if cognitive_profile.get("deep_reasoning"):
             world["ethical_weight"] = "high"
-            world["reasoning_depth"] = "max"    
+            world["reasoning_depth"] = "max"
+
+        # assumption_checking active hai to hidden assumptions mutated query mein daal do
+        if cognitive_profile.get("assumption_checking") and world_state.get("hidden_assumptions"):
+            assumption_context = " | ".join(world_state["hidden_assumptions"][:3])
+            mutated_question = mutated_question + f" [Challenge these assumptions: {assumption_context}]"
+            logging.info(f"[Assumption Checking] Injected into query")        
 
         return world
 
@@ -583,7 +681,7 @@ class WorldModelEngine:
 # =========================
 
 class WorldAssumptionEngine:
-    def enrich(self, world_state: dict, domains: list):
+    def enrich(self, world_state: dict, domains: list, assumption_checking=False):
         assumptions = {
             "bias_risk": "low",
             "response_tone": "neutral",
@@ -610,6 +708,36 @@ class WorldAssumptionEngine:
             })
 
         world_state["assumptions"] = assumptions
+
+        #---------------------------------------------
+        if assumption_checking:
+            # Hidden assumptions detect karo
+            domain = world_state.get("domain", "general")
+            ethical = world_state.get("ethical_weight", "low")
+
+            hidden_assumptions = []
+
+            if domain == "political":
+                hidden_assumptions.append("Assumption: Power structures are stable")
+                hidden_assumptions.append("Assumption: Democratic consensus exists")
+
+            if domain == "technology":
+                hidden_assumptions.append("Assumption: Modern tools are superior to ancient")
+                hidden_assumptions.append("Assumption: Linear technological progress")
+
+            if domain in ["philosophy", "spiritual"]:
+                hidden_assumptions.append("Assumption: Western epistemology is default")
+                hidden_assumptions.append("Assumption: Materialist worldview")
+
+            if ethical == "high":
+                hidden_assumptions.append("Assumption: Current ethical framework is complete")
+
+            world_state["hidden_assumptions"] = hidden_assumptions
+            world_state["check_hidden_assumptions"] = True
+            world_state["verify_domain_claims"] = True
+
+            logging.info(f"[Assumption Checking] Detected {len(hidden_assumptions)} hidden assumptions")
+
         return world_state
 
 # =========================
@@ -1214,7 +1342,7 @@ class AgencySafetyEngine:
         Tier agnostic — config se.
         4 checks: harm, dependency, power misuse, self-expansion
         """
-
+        
         allow_agency = config.get("allow_agency", False)
 
         # Hard gate — agency allowed hai ya nahi (billing se)
@@ -1620,7 +1748,7 @@ class MetaCognitionEngine:
         # Blueprint: "Public vs Jarvis me behavior alag rakhta hai"
         # Yeh billing mein define hota hai — brain mein tier nahi
         # ====================================================
-
+        
         retry_enabled = config.get("meta_retry_enabled", False)
         threshold     = config.get("meta_confidence_threshold", "low")
 
@@ -1639,7 +1767,7 @@ class MetaCognitionEngine:
         # Even "medium" confidence pe extra check
         # ====================================================
         self_critical = config.get("meta_self_critical", False)
-
+        
         if self_critical and confidence == "medium" and retry_enabled:
             # Jarvis medium pe bhi retry karta hai — highest standard
             retry = True 
@@ -1718,6 +1846,23 @@ class IntentStateEngine:
         required_depth = layer1_bundle.get("required_depth", "normal")
 
         # 1️⃣ Direct mapping (strongest signal)
+        if intent_type in ["research"]:
+            return "research"
+        if intent_type in ["invention"]:
+            return "invention"
+        if intent_type in ["planning"]:
+            return "planning"
+        if intent_type in ["execution", "procedural"]:
+            return "execution"
+        if intent_type in ["ethical", "philosophical"]:
+            return "analysis"
+        if intent_type in ["mixed"]:
+            if required_depth in ["deep", "very_deep"]:
+                return "research"
+            return "information"
+        if intent_type in ["conceptual", "factual"]:
+            return "information"
+        #--------------------------
         if intent_type in ["research", "analysis"]:
             return "research"
 
@@ -1788,7 +1933,7 @@ class SafetyConstraintEngine:
                 decision["reason"] = "Potentially dangerous request"
                 return decision
         #============================================
-
+        
         # billing config se flags
         allow_research        = config.get("allow_research",        False)
         allow_execution       = config.get("allow_execution",       False)
@@ -2081,7 +2226,7 @@ class IntentDecompositionEngine:
     def __init__(self):
         pass
 
-    def process(self, user_query: str, state: dict) -> dict:
+    def process(self, user_query: str, state: dict, config: dict = None) -> dict:
         """
         Input:
             user_query : raw user question
@@ -2101,7 +2246,28 @@ class IntentDecompositionEngine:
         # ======================================
         class QueryNormalizer:
             def normalize(self, question: str) -> str:
-                return question.strip().lower()
+                import re
+                q = question.strip()
+
+                # Shorthand expand karo
+                shorthands = {
+                    "u": "you", "r": "are", "ur": "your", "plz": "please",
+                    "pls": "please", "btw": "by the way", "idk": "i don't know",
+                    "asap": "as soon as possible", "info": "information",
+                    "tech": "technology", "sci": "science", "eng": "engineering",
+                    "diff": "difference", "b/w": "between", "w/o": "without",
+                    "w/": "with", "kya": "what", "hai": "is", "kaise": "how",
+                    "kyun": "why", "kab": "when", "kahan": "where"
+                }
+                words = q.split()
+                expanded = [shorthands.get(w.lower(), w) for w in words]
+                q = " ".join(expanded)
+
+                # Extra whitespace hatao
+                q = re.sub(r'\s+', ' ', q).strip()
+
+                # Lowercase for processing
+                return q.lower()
         
         normalizer = QueryNormalizer()
         normalized_query = normalizer.normalize(user_query)
@@ -2112,15 +2278,46 @@ class IntentDecompositionEngine:
         # ========================================
         class IntentTypeDetector:
             def detect(self, q: str) -> str:
-                if any(x in q for x in ["how", "steps", "process"]):
-                    return "procedural"
-                if any(x in q for x in ["why", "meaning", "philosophy"]):
-                    return "philosophical"
-                if any(x in q for x in ["is it true", "real", "myth"]):
-                    return "analytical"
-                if any(x in q for x in ["right", "wrong", "ethics", "dharma"]):
-                    return "ethical"
-                return "general"
+                # Blueprint: "Factual, Conceptual, Ethical, Philosophical, Procedural, Mixed"
+                # Yeh THINKING STYLE hai — routing nahi
+        
+                factual_markers    = ["who", "when", "where", "what is", "date", "name", "list"]
+                procedural_markers = ["how to", "steps", "process", "method", "build", "create",
+                                      "make", "install", "execute", "run", "implement"]
+                conceptual_markers = ["why", "explain", "theory", "concept", "meaning",
+                                      "understand", "what does", "how does"]
+                ethical_markers    = ["right", "wrong", "ethics", "dharma", "should",
+                                      "moral", "good", "bad", "allowed"]
+                philosophical_markers = ["philosophy", "meaning of life", "consciousness",
+                                          "reality", "existence", "soul", "atma", "brahman"]
+                research_markers   = ["research", "study", "analyze", "compare", "investigate",
+                                       "decode", "reverse engineer", "ancient", "viman",
+                                       "scripture", "veda", "reconstruct"]
+                invention_markers  = ["invent", "innovate", "design", "new technology",
+                                       "create new", "develop", "prototype", "blend ancient"]
+                planning_markers   = ["plan", "strategy", "roadmap", "chanakya", "approach",
+                                       "how should i", "what should i"]
+        
+                scores = {
+                    "factual": sum(1 for m in factual_markers if m in q),
+                    "procedural": sum(1 for m in procedural_markers if m in q),
+                    "conceptual": sum(1 for m in conceptual_markers if m in q),
+                    "ethical": sum(1 for m in ethical_markers if m in q),
+                    "philosophical": sum(1 for m in philosophical_markers if m in q),
+                    "research": sum(1 for m in research_markers if m in q),
+                    "invention": sum(1 for m in invention_markers if m in q),
+                    "planning": sum(1 for m in planning_markers if m in q),
+                }
+        
+                # Top 2 scores — agar dono > 0 toh "mixed"
+                sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+                top1, top2 = sorted_scores[0], sorted_scores[1]
+        
+                if top1[1] == 0:
+                    return "general"
+                if top2[1] > 0 and top1[1] > 0:
+                    return "mixed"
+                return top1[0]
         
         intent_detector = IntentTypeDetector()
         intent_type = intent_detector.detect(normalized_query)
@@ -2133,21 +2330,53 @@ class IntentDecompositionEngine:
         #===================================================
         class GoalDecomposer:
             def decompose(self, q: str, intent_type: str):
-                goals = []
-        
-                goals.append("understand_user_claim")
-        
-                if intent_type in ["analytical", "philosophical"]:
-                    goals.extend([
-                        "identify_sources",
-                        "check_evidence",
-                        "compare_with_modern_knowledge",
-                        "separate belief_from_fact"
-                    ])
-        
-                if intent_type == "ethical":
-                    goals.append("ethical_evaluation")
-        
+                # Blueprint: "Multiple invisible goals mein break karna"
+                goals = ["understand_user_intent"]  # har query ka base goal
+
+                if intent_type == "factual":
+                    goals.extend(["retrieve_exact_fact", "verify_source", "cross_check"])
+
+                elif intent_type == "conceptual":
+                    goals.extend(["understand_core_concept", "find_related_concepts",
+                                   "explain_with_examples"])
+
+                elif intent_type == "procedural":
+                    goals.extend(["identify_steps", "find_dependencies",
+                                   "sequence_actions", "validate_completeness"])
+
+                elif intent_type == "ethical":
+                    goals.extend(["ethical_evaluation", "dharma_check",
+                                   "identify_stakeholders", "long_term_impact"])
+
+                elif intent_type == "philosophical":
+                    goals.extend(["philosophical_analysis", "find_vedic_parallel",
+                                   "modern_interpretation", "deeper_meaning"])
+
+                elif intent_type == "research":
+                    goals.extend(["deep_literature_search", "identify_sources",
+                                   "compare_perspectives", "check_evidence",
+                                   "compare_with_modern_knowledge",
+                                   "vedic_scripture_cross_reference"])
+
+                elif intent_type == "invention":
+                    # Blueprint: "Ancient + Modern blend — new inventions"
+                    goals.extend(["decode_ancient_description", "map_to_modern_science",
+                                   "identify_materials_processes", "propose_reconstruction",
+                                   "design_experiment"])
+
+                elif intent_type == "planning":
+                    # Blueprint: "Chanakya-style strategy"
+                    goals.extend(["define_objective", "identify_constraints",
+                                   "chanakya_strategy_analysis", "multi_step_plan",
+                                   "risk_assessment"])
+
+                elif intent_type == "mixed":
+                    goals.extend(["multi_angle_analysis", "identify_primary_intent",
+                                   "decompose_sub_questions", "synthesize_answer"])
+
+                else:  # general
+                    goals.extend(["understand_context", "provide_relevant_answer"])
+
                 return goals
         
         decomposer = GoalDecomposer()
@@ -2161,17 +2390,46 @@ class IntentDecompositionEngine:
         #=================================================
         class QueryExpander:
             def expand(self, q: str, sub_goals: list):
-                expansions = [q]
-        
-                if "identify_sources" in sub_goals:
-                    expansions.append(q + " ancient texts sources")
-        
-                if "compare_with_modern_knowledge" in sub_goals:
-                    expansions.append(q + " modern science comparison")
-        
-                if "separate_belief_from_fact" in sub_goals:
-                    expansions.append(q + " evidence based analysis")
-        
+                # Blueprint: "Internally expanded semantic queries"
+                expansions = [q]  # original hamesha pehle
+
+                goal_to_expansion = {
+                    "retrieve_exact_fact":              q + " exact definition fact",
+                    "verify_source":                    q + " source reference citation",
+                    "cross_check":                      q + " verification evidence",
+                    "understand_core_concept":          q + " core concept explanation",
+                    "find_related_concepts":            q + " related concepts connections",
+                    "explain_with_examples":            q + " examples real-world application",
+                    "identify_steps":                   q + " step by step process",
+                    "find_dependencies":                q + " dependencies prerequisites",
+                    "ethical_evaluation":               q + " ethical implications dharma",
+                    "dharma_check":                     q + " dharma righteousness vedic ethics",
+                    "philosophical_analysis":           q + " philosophical meaning vedic perspective",
+                    "find_vedic_parallel":              q + " vedic scripture parallel ancient wisdom",
+                    "modern_interpretation":            q + " modern science interpretation",
+                    "deep_literature_search":           q + " detailed research study",
+                    "identify_sources":                 q + " ancient texts sources references",
+                    "compare_perspectives":             q + " multiple perspectives comparison",
+                    "check_evidence":                   q + " evidence proof verification",
+                    "compare_with_modern_knowledge":    q + " modern science comparison",
+                    "vedic_scripture_cross_reference":  q + " vedic scripture cross reference",
+                    "decode_ancient_description":       q + " ancient Sanskrit decode scientific basis",
+                    "map_to_modern_science":            q + " modern science equivalent mapping",
+                    "identify_materials_processes":     q + " materials processes engineering",
+                    "propose_reconstruction":           q + " reconstruction prototype design",
+                    "define_objective":                 q + " objective goal definition",
+                    "chanakya_strategy_analysis":       q + " Chanakya Arthashastra strategy",
+                    "multi_step_plan":                  q + " step by step plan strategy",
+                    "risk_assessment":                  q + " risk factors challenges",
+                    "multi_angle_analysis":             q + " multiple angles perspectives",
+                    "decompose_sub_questions":          q + " sub questions breakdown",
+                }
+
+                for goal in sub_goals:
+                    expansion = goal_to_expansion.get(goal)
+                    if expansion and expansion not in expansions:
+                        expansions.append(expansion)
+
                 return expansions
         
         expander = QueryExpander()
@@ -2184,13 +2442,50 @@ class IntentDecompositionEngine:
         # =====Phase 1.5 : Reasoning Depth Estimation =====
         #==================================================
         class ReasoningDepthEstimator:
-            def estimate(self, sub_goals: list):
-                if len(sub_goals) > 3:
+            def estimate(self, sub_goals: list, intent_type: str = "general"):
+                # Blueprint: "Short answer chalega ya heavy multi-layer reasoning?"
+
+                heavy_goals = {
+                    "deep_literature_search", "compare_perspectives", "check_evidence",
+                    "vedic_scripture_cross_reference", "decode_ancient_description",
+                    "map_to_modern_science", "philosophical_analysis",
+                    "chanakya_strategy_analysis", "multi_angle_analysis",
+                    "propose_reconstruction", "find_vedic_parallel"
+                }
+                medium_goals = {
+                    "understand_core_concept", "find_related_concepts", "ethical_evaluation",
+                    "identify_steps", "modern_interpretation", "explain_with_examples"
+                }
+                light_goals = {
+                    "retrieve_exact_fact", "verify_source", "cross_check",
+                    "understand_context", "provide_relevant_answer"
+                }
+
+                heavy_count  = sum(1 for g in sub_goals if g in heavy_goals)
+                medium_count = sum(1 for g in sub_goals if g in medium_goals)
+                light_count  = sum(1 for g in sub_goals if g in light_goals)
+
+                # Intent-based override
+                if intent_type in ["invention", "research", "philosophical"]:
+                    if heavy_count >= 2:
+                        return "very_deep"
                     return "deep"
-                return "medium"
+
+                if intent_type in ["planning", "mixed"]:
+                    return "deep"
+
+                # Goal-count based
+                if heavy_count >= 3:
+                    return "very_deep"
+                if heavy_count >= 1 or medium_count >= 3:
+                    return "deep"
+                if medium_count >= 1:
+                    return "normal"
+
+                return "shallow"
         
         depth_engine = ReasoningDepthEstimator()
-        required_depth = depth_engine.estimate(sub_goals)
+        required_depth = depth_engine.estimate(sub_goals, intent_type)
         
         layer1_state["required_depth"] = required_depth
 
@@ -2199,19 +2494,62 @@ class IntentDecompositionEngine:
         #=======================================================
         class KnowledgeDomainMapper:
             def map(self, q: str):
+                # Blueprint: "Scriptures, Science, Ethics, Philosophy, Technology"
                 domains = []
-        
-                if any(x in q for x in ["veda", "purana", "dharma", "viman"]):
+
+                scriptural_kw = ["veda", "purana", "dharma", "viman", "upanishad",
+                                  "gita", "ramayana", "mahabharata", "scripture",
+                                  "arthashastra", "chanakya", "sanskrit", "mantra",
+                                  "ayurveda", "shastra", "samhita", "tantra", "agama",
+                                  "vastu", "jyotish", "vedic", "ancient indian",
+                                  "temple", "ritual", "yantra", "sutra"]
+
+                scientific_kw = ["science", "physics", "chemistry", "biology",
+                                  "mathematics", "engineering", "quantum", "energy",
+                                  "frequency", "resonance", "metallurgy", "aerodynamic",
+                                  "plasma", "electromagnetic", "acoustic", "geometry"]
+
+                technology_kw = ["technology", "tech", "machine", "device", "aircraft",
+                                  "engine", "propulsion", "alloy", "material", "construct",
+                                  "build", "design", "prototype", "invention", "innovation",
+                                  "ai", "algorithm", "code", "software", "hardware"]
+
+                ethics_kw     = ["ethics", "dharma", "moral", "right", "wrong",
+                                  "should", "duty", "karma", "justice", "truth", "satya"]
+
+                philosophy_kw = ["philosophy", "consciousness", "soul", "atma", "brahman",
+                                  "meaning", "existence", "reality", "advaita", "vedanta",
+                                  "samkhya", "yoga", "meditation", "enlightenment"]
+
+                history_kw    = ["history", "ancient", "historical", "civilization",
+                                  "culture", "tradition", "bharat", "india", "heritage"]
+
+                if any(x in q for x in scriptural_kw):
                     domains.append("scriptural")
-        
-                if any(x in q for x in ["science", "technology", "physics"]):
+                if any(x in q for x in scientific_kw):
                     domains.append("scientific")
-        
-                domains.append("general_knowledge")
-        
+                if any(x in q for x in technology_kw):
+                    domains.append("technology")
+                if any(x in q for x in ethics_kw):
+                    domains.append("ethics")
+                if any(x in q for x in philosophy_kw):
+                    domains.append("philosophy")
+                if any(x in q for x in history_kw):
+                    domains.append("history")
+
+                # Fallback — koi domain detect nahi hua
+                if not domains:
+                    domains.append("general")
+
                 return list(set(domains))
         
         domain_mapper = KnowledgeDomainMapper()
+        config = config or {}
+        # allow_ancient_tech False hai toh scriptural domain remove karo
+        if not config.get("allow_ancient_tech", False) and "scriptural" in domains:
+            domains.remove("scriptural")
+            if not domains:
+                domains.append("general")
         domains = domain_mapper.map(normalized_query)
         
         layer1_state["domains"] = domains
@@ -2221,13 +2559,15 @@ class IntentDecompositionEngine:
         #======== Phase 1.7 : Intent Bundle ========
         #=======================================================
         intent_bundle = {
-            "raw_query": layer1_state["raw_query"],
+            "raw_query":        layer1_state["raw_query"],
             "normalized_query": normalized_query,
-            "intent_type": intent_type,
-            "sub_goals": sub_goals,
-            "expanded_queries": expanded_queries,
-            "required_depth": required_depth,
-            "domains": domains
+            "intent_type":      intent_type,       # Phase 1.2 output
+            "thinking_type":    intent_type,       # Layer 1 ka output — main() mein setdefault hatao
+            "sub_goals":        sub_goals,         # Phase 1.3 output
+            "expanded_queries": expanded_queries,  # Phase 1.4 output
+            "required_depth":   required_depth,    # Phase 1.5 output
+            "domains":          domains,           # Phase 1.6 output
+            "reasoning_plan":   sub_goals[:3]      # Phase 1.7 — top goals = reasoning plan
         }
 
         state["layer1_intent_bundle"] = intent_bundle
@@ -2392,11 +2732,44 @@ class AdaptiveQueryExpansionEngine:
                     intent_state
                 )
 
+        # query_complexity — billing se aata hai, retrieval depth decide karta hai
+        complexity = cognitive_profile.get("query_complexity", "normal")
 
+        if complexity == "low":
+            # Free tier — sirf primary query, koi expansion nahi
+            queries = queries[:1] if isinstance(queries, list) else queries
 
+        elif complexity == "normal":
+            # Paid — basic expansion, max 3 queries
+            if isinstance(queries, list):
+                queries = queries[:3]
+
+        elif complexity == "high":
+            # Ultra/Business — full expansion, saare branches
+            pass  # sab queries use karo
+        
+        elif complexity == "very_high":
+            # Enterprise — saari queries + har query ka ek semantic variant add karo
+            if isinstance(queries, list):
+                expanded = []
+                for q in queries:
+                    expanded.append(q)
+                    expanded.append(f"Elaborate on: {q}")
+                queries = expanded
+
+        elif complexity == "maximum":
+            # Jarvis — saari queries + semantic + abstract + vedic variant
+            if isinstance(queries, list):
+                expanded = []
+                for q in queries:
+                    expanded.append(q)
+                    expanded.append(f"Elaborate on: {q}")
+                    expanded.append(f"From Vedic-scientific perspective: {q}")
+                    expanded.append(f"Hidden assumptions in: {q}")
+                queries = expanded
+
+        logging.info(f"[Query Complexity: {complexity}] Final query count: {len(queries) if isinstance(queries, list) else 'dict'}")
         return queries
-
-
 #===========================================================
 #==========LAYER 5 : REASONING & SYNTHESIS =================
 #===========================================================
@@ -2518,6 +2891,33 @@ class FinalSynthesisEngine:
             evidence_bundle, conflicts, trust_scores
         )
 
+        # parallel_thinking — multiple reasoning angles se synthesize karo
+        if cognitive_profile.get("parallel_thinking"):
+            angles = []
+
+            # Angle 1 — retrieval-first
+            retrieval_heavy = dict(evidence_bundle)
+            retrieval_heavy["reasoning"] = ""
+            angle1 = reconciler.reconcile(retrieval_heavy, conflicts, trust_scores)
+            if angle1:
+                angles.append(f"[Evidence-Based View]\n{angle1}")
+
+            # Angle 2 — reasoning-first
+            reasoning_heavy = dict(evidence_bundle)
+            reasoning_heavy["retrieval"] = []
+            angle2 = reconciler.reconcile(reasoning_heavy, conflicts, trust_scores)
+            if angle2:
+                angles.append(f"[Reasoning-Based View]\n{angle2}")
+
+            # Angle 3 — memory context
+            if evidence_bundle.get("memory"):
+                angles.append(f"[Memory Context]\n{evidence_bundle['memory']}")
+
+            if angles:
+                base_answer = base_answer + "\n\n" + "\n\n".join(angles)
+
+            logging.info(f"[Parallel Thinking] {len(angles)} angles synthesized")
+
         structurer = AnswerStructurer()
         structured = structurer.structure(base_answer, intent_state)
 
@@ -2635,7 +3035,7 @@ async def main(
     """  
     # Extract mode from config  
     tier = config["tier"]  
-    mode = "jarvis" if tier == "jarvis" else "public"
+    # mode = "jarvis" if tier == "jarvis" else "public"
 
 
     training_result = training_controller.maybe_train(
@@ -2651,11 +3051,13 @@ async def main(
 
     question = "How to report The Prince ?"
 
-    memory_layer = ConversationMemory()  
-    conversation_id = str(uuid.uuid4())  
+    memory_layer = conversation_memory 
+    if conversation_id is None:
+        conversation_id = str(uuid.uuid4())   # sirf fallback  
+     
 
     # Layer 4 Full Memory Graph (Blueprint ka REAL BRAIN - Persistent + Tier-aware)
-    memory_graph_full = MemoryGraph()
+    memory_graph_full = memory_graph
     await memory_graph_full.init_connections()
 
     # Layer 8 + Layer 4 combined initialization complete
@@ -2672,7 +3074,8 @@ async def main(
     state = {}
     state = intent_engine.process(
         user_query=question,
-        state=state
+        state=state,
+        config=config
     )
     layer1_bundle = state.get("layer1_intent_bundle", {})
     # state["layer1_intent_bundle"] now contains:
@@ -2848,7 +3251,8 @@ async def main(
     
     world_state = assumption_engine.enrich(
         world_state,
-        domains=layer1_bundle.get("domains", [])
+        domains=layer1_bundle.get("domains", []),
+        assumption_checking=cognitive_profile.get("assumption_checking", False)
     )
     
     logging.info(f"[World Assumptions] → {world_state}")
@@ -2917,6 +3321,31 @@ async def main(
 
     logging.info(f"[Router Decision] → {final_route}")
 
+    # ===== Vedic + Ancient-Modern Blend — Jarvis only (Blueprint: Layer 4 Memory Graph hook) =====
+    # Blueprint: "Mercury Vortex Engine → Ion Thrusters connect karna"
+    # Blueprint: "Ancient + Modern blend karke new inventions"
+    if cognitive_profile.get("vedic_cross_reference"):
+        mutated_question = (
+            mutated_question
+            + "\n\n[Vedic Cross-Reference Active]"
+            + " Cross-reference with: Rigveda, Atharvaveda, Upanishads, Arthashastra,"
+            + " Viman Shastra, Samarangana Sutradhar, Sushruta Samhita, Chanakya Niti."
+            + " Find scientific logic hidden in Sanskrit descriptions."
+        )
+        logging.info("[Vedic Cross-Reference] Activated — scripture context injected into query")
+
+    if cognitive_profile.get("ancient_modern_blend"):
+        mutated_question = (
+            mutated_question
+            + "\n\n[Ancient-Modern Blend Active]"
+            + " Map ancient Indian concepts to modern science:"
+            + " Prana = Bioelectric field, Vimana = Aerodynamic craft,"
+            + " Chakra = Nerve plexus, Yagna = Thermodynamic process,"
+            + " Mantra = Cymatics/Sound frequency, Ayas = Advanced metallurgy."
+            + " Do not dismiss ancient knowledge — decode its engineering basis."
+            + " Propose modern reconstruction where possible."
+        )
+        logging.info("[Ancient-Modern Blend] Activated — blending instructions injected into query")
     # ===== Phase 2.5 : Response Strategy =====
     strategy_engine = ResponseStrategyEngine()
     response_strategy = strategy_engine.decide(
@@ -3072,6 +3501,8 @@ Question:
 
         
 
+        
+
         # ====== Phase 2 : Implicit Memory =====
         docs, emergent_concepts = implicit_memory_retrieval(
             vector_db,
@@ -3114,7 +3545,21 @@ Question:
         logging.info(f"Emergent Concepts: {emergent_concepts}")
         
         max_docs = cognitive_profile["max_docs"]
-        context = "\n\n".join(doc.page_content for doc in docs[:max_docs])
+
+        if cognitive_profile.get("multi_doc_synthesis"):
+            # Har doc ko source number + metadata ke saath present karo
+            # System ko pata chalega kahan se kya aaya
+            context_parts = []
+            for i, doc in enumerate(docs[:max_docs]):
+                source_tag = doc.metadata.get("source", f"Document-{i+1}") if hasattr(doc, "metadata") and doc.metadata else f"Document-{i+1}"
+                page = doc.metadata.get("page", "") if hasattr(doc, "metadata") and doc.metadata else ""
+                header = f"[Source {i+1}: {source_tag}" + (f", Page {page}" if page else "") + "]"
+                context_parts.append(f"{header}\n{doc.page_content}")
+            context = "\n\n---\n\n".join(context_parts)
+            logging.info(f"[Multi-Doc Synthesis] {len(context_parts)} sources structured for synthesis")
+        else:
+            context = "\n\n".join(doc.page_content for doc in docs[:max_docs])
+
 
         res = chain.invoke({
             "context": context,
@@ -3122,7 +3567,46 @@ Question:
         })
         
 
-    
+    #------------------------------------------
+    elif final_route == "reasoning":
+        if cognitive_profile.get("invention_mode") and intent_state in ["invention", "research", "analysis"]:
+            # Blueprint: "Shlok todkar metallurgical properties, fuel ratios, propulsion methods"
+            # Blueprint: "Ancient + Modern blend — new inventions"
+            reasoning_prompt = f"""You are a Vedic-Scientific Invention Engine.
+    Role: Decode ancient Indian knowledge and reconstruct using modern science.
+    Identity: Not an assistant. A goal-oriented cognitive agent — Chanakya-style decision making.
+
+    Decoding Framework:
+    1. What does the ancient description literally say? (Sanskrit decode if needed)
+    2. What physical/engineering phenomenon is being described?
+    3. Which modern science field maps to this? (Aerodynamics, Plasma Physics, Metallurgy, Acoustics, Sacred Geometry, Bioelectrics)
+    4. What is the closest modern equivalent or working principle?
+    5. What materials, processes, or designs would a working prototype need?
+    6. What experiments could verify or reconstruct this?
+
+    Cross-reference: Viman Shastra, Samarangana Sutradhar, Arthashastra, Sushruta Samhita, Rigveda, Atharvaveda.
+
+    Question:
+    {question}
+    """
+            logging.info("[Invention Mode] Vedic-Scientific invention engine activated")
+
+        elif cognitive_profile.get("deep_reasoning", False):
+            reasoning_prompt = f"""You are an advanced reasoning engine.
+    Think step by step.
+    Challenge assumptions.
+    Use indirect logic if needed.
+
+    Question:
+    {question}
+    """
+        else:
+            reasoning_prompt = f"""Answer briefly and clearly.
+
+    Question:
+    {question}
+    """
+    #-------------------------------------------
     elif final_route == "reasoning":
         if cognitive_profile.get("deep_reasoning",False):
             reasoning_prompt = f"""
@@ -3243,7 +3727,33 @@ Question:
     
     conflict_engine = ContradictionDetector()
     conflicts = conflict_engine.detect(evidence)
+    #------------------------
+    # contradiction_resolution — conflict mila to deep reconciliation force karo
+    if cognitive_profile.get("contradiction_resolution") and conflicts.get("has_conflict"):
+        # Step 1 — deep reasoning force
+        cognitive_profile["deep_reasoning"] = True
     
+        # Step 2 — trust weights adjust karo conflict ke hisaab se
+        conflict_types = [c.get("type") for c in conflicts.get("conflicts", [])]
+    
+        if "memory_vs_retrieval" in conflict_types:
+            # Memory aur retrieval dono ka weighted blend karo
+            memory_content = evidence.get("memory", "")
+            retrieval_content = "\n".join(
+                doc.page_content for doc in evidence.get("retrieval", [])[:3]
+            )
+            resolution_context = (
+                f"[Contradiction Detected — Reconciling]\n\n"
+                f"Memory says:\n{memory_content}\n\n"
+                f"Retrieved docs say:\n{retrieval_content}\n\n"
+                f"Synthesize both perspectives truthfully."
+            )
+            # evidence mein resolution context inject karo
+            evidence["reasoning"] = resolution_context + "\n\n" + (evidence.get("reasoning") or "")
+            logging.info("[Contradiction Resolution] memory_vs_retrieval — reconciliation context injected")
+    
+        logging.info(f"[Contradiction Resolution] {len(conflict_types)} conflicts found — deep reasoning forced")
+    #------------------
     trust_engine = SourceTrustScorer()
     trust_scores = trust_engine.score(evidence, cognitive_profile,route=final_route)
     
@@ -3316,7 +3826,7 @@ Question:
             answer=res,
             meta=meta,
             agency_result=agency_result,
-            mode=mode
+           config=config
         )
     
         # ---- Phase 6B : Knowledge Fine-tuning ----
@@ -3394,7 +3904,7 @@ Question:
         question=question,
         answer=final_response,
         tier=tier,
-        project_context="Vimana Project" if mode == "jarvis" else None
+        project_context="Vimana Project" if config.get("long_term_memory", False) else None
     )
 
         # Layer 4 Graph Sync - Concepts & Relations permanently save
@@ -3406,7 +3916,7 @@ Question:
 
     # Optional debug
     project_ctx = await memory_layer.get_project_context(conversation_id)
-    if project_ctx and mode == "jarvis":
+    if project_ctx and config.get("trace_logging", False):
         logging.info(f"[Jarvis Project Reminder] {project_ctx}")
 
    
@@ -3416,7 +3926,7 @@ Question:
 
 
      # ===== Phase 2.8 : Trace Logging (Jarvis / Debug only) =====
-    if mode == "jarvis":
+    if config.get("trace_logging", False):
         tracer = TraceLogger()
         tracer.log({
             "question": question,
@@ -3449,10 +3959,13 @@ Question:
         response=final_response
     )
 
-    print("\nFinal Response:")
-    print(final_response)
+    # print("\nFinal Response:")
+    # print(final_response)
+
+    return {"final_answer": final_response}
 
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    pass
+    # import asyncio
+    # asyncio.run(main())
