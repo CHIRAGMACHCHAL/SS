@@ -17,6 +17,12 @@ from memory.ingestion import (
     PUBLIC_COLLECTION,
     JARVIS_COLLECTION
 )
+
+import re
+import numpy as np
+import logging
+import spacy
+from sentence_transformers import SentenceTransformer
 #======================================================================================================
 #=========================================================================================================================================
 #..............Phase 2.5 : CONTEXTUAL ENRICHER ..........
@@ -2222,352 +2228,467 @@ class KnowledgeRouter:
 # Layer 1 : Intent Decomposition Engine
 # ===============================
 
+# ─────────────────────────────────────────────
+# MODELS — ek baar load, reuse
+# spaCy  → linguistic structure (NER, POS, sentences)
+# Embedder → semantic meaning (multilingual, no keywords)
+# ─────────────────────────────────────────────
+try:
+    _NLP = spacy.load("xx_ent_wiki_sm")   # multilingual spaCy model
+except OSError:
+    _NLP = spacy.blank("xx")              # fallback blank
+
+_EMBEDDER = SentenceTransformer(
+    "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+    # 50+ languages natively — Hindi, English, French, Arabic, Japanese — sab
+)
+
+def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+    denom = np.linalg.norm(a) * np.linalg.norm(b)
+    return float(np.dot(a, b) / denom) if denom > 0 else 0.0
+
+
 class IntentDecompositionEngine:
+    """
+    Blueprint: "LAYER 1 — Intent ko todna (Control Logic)"
+    Blueprint: "intent concept-based hoga, keyword-based nahi"
+    Blueprint: "Bina Memory Graph ke Intent sirf text hoga, Meaning nahi"
+
+    Intelligence sources:
+    - spaCy  → linguistic structure (entities, POS, sentence boundaries)
+    - Embeddings → semantic meaning (any language, no keywords)
+    - Memory Graph → hidden goals (concept activation)
+
+    Zero LLM calls. Zero hardcoded keywords.
+    """
+
+    # ─────────────────────────────────────────────────────
+    # INTENT PROTOTYPES — meaning definitions, not keywords
+    # Blueprint: "concept-based" — ye centers hain embedding
+    # space mein. Jo query in centers ke paas ho = woh intent.
+    # ─────────────────────────────────────────────────────
+    _INTENT_PROTOTYPES = {
+        "factual": (
+            "What is the exact fact, date, name, number, or definition? "
+            "I need a specific piece of verified information."
+        ),
+        "conceptual": (
+            "Explain this concept deeply. Help me understand "
+            "the theory, principle, or underlying idea."
+        ),
+        "procedural": (
+            "What are the steps? How do I do this? "
+            "Process, method, instructions to accomplish a task."
+        ),
+        "research": (
+            "Deep investigation needed. Multiple sources, comparison, "
+            "multi-layer analysis, synthesis across perspectives."
+        ),
+        "invention": (
+            "Design, create, or invent something new. "
+            "Build a new technology, reconstruct ancient design, "
+            "innovate using science."
+        ),
+        "planning": (
+            "Create a strategy, roadmap, or multi-step plan. "
+            "Goal-oriented approach, Chanakya-style strategy."
+        ),
+        "ethical": (
+            "What is right or wrong? Moral evaluation, dharma, "
+            "duty, karma, justice, ethical judgment."
+        ),
+        "philosophical": (
+            "Deeper meaning, truth, ancient wisdom, consciousness, "
+            "soul, existence, reality, vedic insight."
+        ),
+        "conversation": (
+            "Casual chat, general talk, no specific task needed, "
+            "simple greeting or discussion."
+        ),
+    }
+
+    # ─────────────────────────────────────────────────────
+    # DOMAIN PROTOTYPES — Blueprint Phase 1.6:
+    # "Scriptures, Science, Ethics, Philosophy, Technology"
+    # Semantic definitions, not keyword lists
+    # ─────────────────────────────────────────────────────
+    _DOMAIN_PROTOTYPES = {
+        "scriptural": (
+            "Vedas, Upanishads, Bhagavad Gita, Ramayana, Mahabharata, "
+            "Puranas, Hindu scriptures, Sanskrit texts, Vedic knowledge, "
+            "Viman Shastra, Arthashastra, Sushruta Samhita, temple wisdom, "
+            "mantra, yantra, ancient Bharatiya knowledge."
+        ),
+        "scientific": (
+            "Physics, chemistry, biology, mathematics, quantum mechanics, "
+            "energy systems, electromagnetic, acoustic resonance, "
+            "scientific laws, experiments, natural phenomena."
+        ),
+        "technology": (
+            "Engineering, machines, devices, propulsion systems, alloys, "
+            "materials science, aircraft design, prototype construction, "
+            "artificial intelligence, software, hardware, innovation."
+        ),
+        "ethics": (
+            "Moral principles, dharma, right and wrong, duty, karma, "
+            "justice, truth, ethical decisions, values, responsibility."
+        ),
+        "philosophy": (
+            "Consciousness, soul, atma, brahman, existence, reality, "
+            "Advaita Vedanta, Samkhya, yoga philosophy, enlightenment, "
+            "metaphysics, ontology, meaning of life."
+        ),
+        "history": (
+            "Ancient civilizations, historical events, cultural heritage, "
+            "Bharatiya tradition, ancient kingdoms, warriors, historical figures."
+        ),
+        "statecraft": (
+            "Governance, politics, Arthashastra, Chanakya, leadership, "
+            "policy, administration, power, diplomacy, state management."
+        ),
+        "ayurveda": (
+            "Ayurvedic medicine, herbs, natural healing, body constitution, "
+            "Charaka, Sushruta, traditional Indian medicine, wellness."
+        ),
+    }
+
     def __init__(self):
-        pass
+        # Pre-compute ALL prototype embeddings once at startup
+        # Blueprint: "concept-based" — ye fixed concept centers hain
+        self._intent_embs = {
+            k: _EMBEDDER.encode(v)
+            for k, v in self._INTENT_PROTOTYPES.items()
+        }
+        self._domain_embs = {
+            k: _EMBEDDER.encode(v)
+            for k, v in self._DOMAIN_PROTOTYPES.items()
+        }
 
-    def process(self, user_query: str, state: dict, config: dict = None) -> dict:
-        """
-        Input:
-            user_query : raw user question
-            state      : shared thinking state
-        Output:
-            updated state with decomposed intents
-        """
-        #========================================
-        #=====Phase 1.0 : Raw Query Capture =====
-        #========================================
-        layer1_state = {}
+    # ─────────────────────────────────────────────────────
+    def process(self, user_query: str, state: dict,
+                config: dict = None, memory_graph=None) -> dict:
+
+        config             = config or {}
+        tier               = config.get("tier", "free")
+        allow_ancient      = config.get("allow_ancient_tech", False)
+
+        # ════════════════════════════════════
+        # PHASE 1.0 — Raw Query Capture
+        # Blueprint: "User ne jo bola exact, bina interpretation"
+        # ════════════════════════════════════
+        raw_query = user_query
+
+        # ════════════════════════════════════
+        # PHASE 1.1 — Linguistic Normalization
+        # Blueprint: "normalize, noise hatao, grammar perfect karo"
+        #
+        # spaCy: sentence boundaries, entity spans, POS structure
+        # Embedder: multilingual — 50+ languages same embedding space
+        # Hindi "kya hai ye" aur English "what is this" —
+        # same region in embedding space. No translation needed.
+        # ════════════════════════════════════
+        doc = _NLP(raw_query)   # spaCy linguistic parse
+
+        # Surface clean — only whitespace/punctuation
+        # No word substitution, no dictionary, no translation
+        normalized_query = re.sub(r'\s+', ' ', raw_query.strip())
+
+        # Semantic embedding — captures meaning across ALL languages
+        query_emb = _EMBEDDER.encode(normalized_query)
+
+        # spaCy se linguistic signals extract karo
+        # Grok ka achha idea — entities aur POS use karo
+        entities   = [(ent.text, ent.label_) for ent in doc.ents]
+        # pos_tags   = [(t.text, t.pos_) for t in doc if not t.is_space]
+        noun_chunks = [chunk.text for chunk in doc.noun_chunks]
+        has_question_structure = any(
+            t.dep_ in ("nsubj", "attr", "dobj") for t in doc
+        )
+
+        logging.info(
+            f"[Layer1 Ph1.1] entities={entities} | "
+            f"nouns={noun_chunks[:3]} | question={has_question_structure}"
+        )
+
+        # ════════════════════════════════════
+        # PHASE 1.2 — Intent Type Detection
+        # Blueprint: "Thinking style — Factual/Conceptual/Mixed etc."
+        # Blueprint: "intent concept-based hoga, keyword-based nahi"
+        #
+        # Embeddings: query ka meaning → intent prototype ke paas
+        # spaCy NER: entities se additional signal
+        # ════════════════════════════════════
+        intent_scores = {
+            intent: _cosine(query_emb, proto_emb)
+            for intent, proto_emb in self._intent_embs.items()
+        }
+
+        sorted_intents = sorted(
+            intent_scores.items(), key=lambda x: x[1], reverse=True
+        )
+        top_intent,  top_score  = sorted_intents[0]
+        sec_intent,  sec_score  = sorted_intents[1]
+
+        # spaCy NER signal — Grok ka insight, embedding se combine
+        # PERSON entity + low philosophical score → factual boost
+        has_person_entity  = any(l in ("PERSON","PER")  for _, l in entities)
+        has_org_entity     = any(l in ("ORG","GPE","LOC") for _, l in entities)
+
+        if has_person_entity and top_intent != "factual":
+            intent_scores["factual"] = max(
+                intent_scores["factual"], top_score * 0.85
+            )
+            sorted_intents = sorted(
+                intent_scores.items(), key=lambda x: x[1], reverse=True
+            )
+            top_intent, top_score = sorted_intents[0]
+            sec_intent, sec_score = sorted_intents[1]
+
+        # ORG/GPE/LOC entity → research ya factual boost
+        # Blueprint: "entity-aware thinking style"
+        if has_org_entity:
+            intent_scores["research"] = max(intent_scores["research"], top_score * 0.75)
+            intent_scores["factual"]  = max(intent_scores["factual"],  top_score * 0.70)
+            sorted_intents = sorted(
+                intent_scores.items(), key=lambda x: x[1], reverse=True
+            )
+            top_intent, top_score = sorted_intents[0]
+            sec_intent, sec_score = sorted_intents[1]    
+
+        # Mixed threshold — dono intents close hain
+        MIXED_GAP = 0.07
+        if (top_score - sec_score) < MIXED_GAP and sec_score > 0.28:
+            intent_type   = "mixed"
+            thinking_type = "mixed"
+        else:
+            intent_type   = top_intent
+            thinking_type = top_intent
+
+        logging.info(
+            f"[Layer1 Ph1.2] {top_intent}({top_score:.3f}) vs "
+            f"{sec_intent}({sec_score:.3f}) → {intent_type}"
+        )
+
+        # ════════════════════════════════════
+        # PHASE 1.3 — Goal Decomposition (HEART of Layer 1)
+        # Blueprint: "ChatGPT ek question ko multiple invisible
+        #              goals mein break karta hai"
+        # Blueprint: "Bina Memory Graph ke Intent sirf text hoga"
+        #
+        # Memory Graph: concept activation → hidden goals
+        # spaCy: noun chunks → explicit sub-topics
+        # ════════════════════════════════════
+        sub_goals = []
+        # Billing flags — Layer 1 inhe respect karta hai
+        # Blueprint: "Billing ka kaam: base power inject karna"
+        deep_reasoning   = config.get("deep_reasoning",        False)
+        use_emergent     = config.get("use_emergent_concepts",  False)
+        query_complexity = config.get("query_complexity",       "low")
         
-        layer1_state["raw_query"] = user_query
+        # Blueprint: "PUBLIC: Safe, Light, Shallow vs JARVIS: Heavy, deep"
+        _complexity_to_max_goals = {
+            "low":      2,   # free
+            "normal":   3,   # paid
+            "high":     5,   # ultra_paid / business / enterprise
+            "very_high": 6,  # enterprise
+            "maximum":  8,   # jarvis
+        }
+        max_goals = _complexity_to_max_goals.get(query_complexity, 2)
+        # Memory Graph — primary source (Blueprint aligned)
+        if memory_graph is not None and use_emergent:
+            try:
+                activated = memory_graph.get_similar_concepts(
+                    query_emb.tolist(), top_k=max_goals
+                )
+                sub_goals = [
+                    c["concept"] for c in activated
+                    if c.get("score", 0) > 0.3
+                ]
+            except Exception as e:
+                logging.warning(f"[Layer1 Ph1.3] Memory graph error: {e}")
 
-        #======================================
-        # =====Phase 1.1 : Linguistic Normalization =====
-        # ======================================
-        class QueryNormalizer:
-            def normalize(self, question: str) -> str:
-                import re
-                q = question.strip()
+        # spaCy noun chunks — Grok ka insight
+        # Har noun chunk ek potential sub-goal hai
+        if noun_chunks and len(sub_goals) < max_goals:
+            for chunk in noun_chunks[:max_goals]:
+                goal_candidate = f"investigate_{chunk.replace(' ', '_').lower()}"
+                if goal_candidate not in sub_goals:
+                    sub_goals.append(goal_candidate)
 
-                # Shorthand expand karo
-                shorthands = {
-                    "u": "you", "r": "are", "ur": "your", "plz": "please",
-                    "pls": "please", "btw": "by the way", "idk": "i don't know",
-                    "asap": "as soon as possible", "info": "information",
-                    "tech": "technology", "sci": "science", "eng": "engineering",
-                    "diff": "difference", "b/w": "between", "w/o": "without",
-                    "w/": "with", "kya": "what", "hai": "is", "kaise": "how",
-                    "kyun": "why", "kab": "when", "kahan": "where"
-                }
-                words = q.split()
-                expanded = [shorthands.get(w.lower(), w) for w in words]
-                q = " ".join(expanded)
+        # Intent-based semantic fallback (memory graph empty hone par)
+        if len(sub_goals) < 2:
+            _semantic_goals = {
+                "factual":       ["retrieve_exact_information",
+                                  "verify_accuracy", "find_source"],
+                "conceptual":    ["understand_core_concept",
+                                  "find_related_concepts",
+                                  "build_mental_model"],
+                "procedural":    ["identify_steps", "find_dependencies",
+                                  "validate_sequence"],
+                "research":      ["deep_investigation",
+                                  "multi_source_synthesis",
+                                  "compare_perspectives", "find_evidence"],
+                "invention":     ["decode_ancient_design",
+                                  "map_to_modern_science",
+                                  "propose_reconstruction",
+                                  "design_experiment"],
+                "planning":      ["define_objective", "strategic_analysis",
+                                  "multi_step_plan", "risk_assessment"],
+                "ethical":       ["ethical_evaluation", "dharma_check",
+                                  "identify_consequences"],
+                "philosophical": ["find_deeper_meaning",
+                                  "vedic_wisdom_connect", "modern_parallel"],
+                "conversation":  ["understand_context", "engage_naturally"],
+                "mixed":         ["multi_angle_analysis",
+                                  "identify_primary_intent",
+                                  "synthesize_answer"],
+            }
+            sub_goals = _semantic_goals.get(
+                intent_type, ["understand_user_intent"]
+            )
+        # Billing cap — free max 2 goals, Jarvis max 8
+        sub_goals = sub_goals[:max_goals]
+        # ════════════════════════════════════
+        # PHASE 1.4 — Query Expansion
+        # Blueprint: "ChatGPT internally expanded semantic query banata hai"
+        #
+        # spaCy entities — Grok ka insight (entities = important concepts)
+        # Memory graph neighbors — semantic expansion
+        # ════════════════════════════════════
+        expanded_queries = [raw_query]
 
-                # Extra whitespace hatao
-                q = re.sub(r'\s+', ' ', q).strip()
+        # spaCy entities se expand — Grok ka valid insight
+        if entities:
+            entity_texts = [e[0] for e in entities]
+            entity_variant = f"{raw_query} {' '.join(entity_texts[:3])}"
+            if entity_variant.strip() != raw_query.strip():
+                expanded_queries.append(entity_variant)
 
-                # Lowercase for processing
-                return q.lower()
-        
-        normalizer = QueryNormalizer()
-        normalized_query = normalizer.normalize(user_query)
-        
-        layer1_state["normalized_query"] = normalized_query
-        #========================================
-        # =====Phase 1.2 : Intent Type Detection (thinking type) =====
-        # ========================================
-        class IntentTypeDetector:
-            def detect(self, q: str) -> str:
-                # Blueprint: "Factual, Conceptual, Ethical, Philosophical, Procedural, Mixed"
-                # Yeh THINKING STYLE hai — routing nahi
-        
-                factual_markers    = ["who", "when", "where", "what is", "date", "name", "list"]
-                procedural_markers = ["how to", "steps", "process", "method", "build", "create",
-                                      "make", "install", "execute", "run", "implement"]
-                conceptual_markers = ["why", "explain", "theory", "concept", "meaning",
-                                      "understand", "what does", "how does"]
-                ethical_markers    = ["right", "wrong", "ethics", "dharma", "should",
-                                      "moral", "good", "bad", "allowed"]
-                philosophical_markers = ["philosophy", "meaning of life", "consciousness",
-                                          "reality", "existence", "soul", "atma", "brahman"]
-                research_markers   = ["research", "study", "analyze", "compare", "investigate",
-                                       "decode", "reverse engineer", "ancient", "viman",
-                                       "scripture", "veda", "reconstruct"]
-                invention_markers  = ["invent", "innovate", "design", "new technology",
-                                       "create new", "develop", "prototype", "blend ancient"]
-                planning_markers   = ["plan", "strategy", "roadmap", "chanakya", "approach",
-                                       "how should i", "what should i"]
-        
-                scores = {
-                    "factual": sum(1 for m in factual_markers if m in q),
-                    "procedural": sum(1 for m in procedural_markers if m in q),
-                    "conceptual": sum(1 for m in conceptual_markers if m in q),
-                    "ethical": sum(1 for m in ethical_markers if m in q),
-                    "philosophical": sum(1 for m in philosophical_markers if m in q),
-                    "research": sum(1 for m in research_markers if m in q),
-                    "invention": sum(1 for m in invention_markers if m in q),
-                    "planning": sum(1 for m in planning_markers if m in q),
-                }
-        
-                # Top 2 scores — agar dono > 0 toh "mixed"
-                sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-                top1, top2 = sorted_scores[0], sorted_scores[1]
-        
-                if top1[1] == 0:
-                    return "general"
-                if top2[1] > 0 and top1[1] > 0:
-                    return "mixed"
-                return top1[0]
-        
-        intent_detector = IntentTypeDetector()
-        intent_type = intent_detector.detect(normalized_query)
-        
-        layer1_state["intent_type"] = intent_type   
-     
-        
-        #====================================================
-        # =====Phase 1.3 : Goal Decomposition =====
-        #===================================================
-        class GoalDecomposer:
-            def decompose(self, q: str, intent_type: str):
-                # Blueprint: "Multiple invisible goals mein break karna"
-                goals = ["understand_user_intent"]  # har query ka base goal
+        # Memory graph semantic neighbors
+        if memory_graph is not None and use_emergent:
+            try:
+                neighbors = memory_graph.get_similar_concepts(
+                    query_emb.tolist(), top_k=3
+                )
+                for n in neighbors:
+                    concept = n.get("concept", "")
+                    if concept and concept.lower() not in raw_query.lower():
+                        expanded_queries.append(f"{raw_query} {concept}")
+            except Exception:
+                pass
 
-                if intent_type == "factual":
-                    goals.extend(["retrieve_exact_fact", "verify_source", "cross_check"])
+        # Intent-aware semantic variants (meaning-based, not template)
+        _semantic_variants = {
+            "research":      [f"{raw_query} evidence analysis perspectives"],
+            "invention":     [f"{raw_query} ancient scientific principle modern equivalent"],
+            "philosophical": [f"{raw_query} vedic wisdom deeper meaning"],
+            "planning":      [f"{raw_query} strategic approach step by step"],
+        }
+        for v in _semantic_variants.get(intent_type, []):
+            if v not in expanded_queries:
+                expanded_queries.append(v)
 
-                elif intent_type == "conceptual":
-                    goals.extend(["understand_core_concept", "find_related_concepts",
-                                   "explain_with_examples"])
+        # ════════════════════════════════════
+        # PHASE 1.5 — Reasoning Depth Estimation
+        # Blueprint: "Short answer chalega ya heavy multi-layer reasoning?"
+        #
+        # Embedding confidence + spaCy complexity + goal count
+        # Grok ka idea (sentence length) + embedding confidence combine
+        # ════════════════════════════════════
+        n_sentences     = len(list(doc.sents))
+        n_entities      = len(entities)
+        goal_count      = len(sub_goals)
+        top_confidence  = top_score
 
-                elif intent_type == "procedural":
-                    goals.extend(["identify_steps", "find_dependencies",
-                                   "sequence_actions", "validate_completeness"])
+        graph_relevance = 0.0
+        if memory_graph is not None:
+            try:
+                graph_relevance = memory_graph.estimate_relevance(raw_query)
+            except Exception:
+                pass
 
-                elif intent_type == "ethical":
-                    goals.extend(["ethical_evaluation", "dharma_check",
-                                   "identify_stakeholders", "long_term_impact"])
+        # Multi-signal depth decision
+        if intent_type in ["invention", "philosophical"] and goal_count >= 3:
+            required_depth = "very_deep"
+        elif intent_type == "research" or goal_count >= 4:
+            required_depth = "deep"
+        elif n_sentences >= 3 or n_entities >= 3:
+            # Grok ka sentence/entity insight — complex linguistic structure
+            required_depth = "deep"
+        elif intent_type in ["conceptual", "ethical"] or goal_count >= 2:
+            required_depth = "normal"
+        elif intent_type == "factual" and top_confidence > 0.65:
+            required_depth = "shallow"
+        elif graph_relevance > 0.7:
+            required_depth = "deep"
+        else:
+            required_depth = "normal"
+        if not deep_reasoning:
+            # PUBLIC tiers — max "normal", kabhi deep/very_deep nahi
+            if required_depth in ["deep", "very_deep"]:
+                required_depth = "normal"
+        elif deep_reasoning and required_depth in ["normal", "shallow"]:
+            # deep_reasoning True = Jarvis/Enterprise — minimum deep
+            required_depth = "deep"
+        logging.info(
+            f"[Layer1 Ph1.5] depth={required_depth} | "
+            f"sents={n_sentences} | ents={n_entities} | "
+            f"goals={goal_count} | graph={graph_relevance:.2f}"
+        )
 
-                elif intent_type == "philosophical":
-                    goals.extend(["philosophical_analysis", "find_vedic_parallel",
-                                   "modern_interpretation", "deeper_meaning"])
+        # ════════════════════════════════════
+        # PHASE 1.6 — Knowledge Domain Mapping
+        # Blueprint: "Scriptures, Science, Ethics, Philosophy, Technology"
+        #
+        # Embeddings: pure semantic — no keyword lists
+        # spaCy entities: domain-relevant named entities detect karo
+        # ════════════════════════════════════
+        DOMAIN_THRESH = 0.35
 
-                elif intent_type == "research":
-                    goals.extend(["deep_literature_search", "identify_sources",
-                                   "compare_perspectives", "check_evidence",
-                                   "compare_with_modern_knowledge",
-                                   "vedic_scripture_cross_reference"])
+        domain_scores = {
+            d: _cosine(query_emb, proto_emb)
+            for d, proto_emb in self._domain_embs.items()
+        }
+        domains = [
+            d for d, score in domain_scores.items()
+            if score >= DOMAIN_THRESH
+        ]
+        domains = sorted(domains, key=lambda d: domain_scores[d], reverse=True)
 
-                elif intent_type == "invention":
-                    # Blueprint: "Ancient + Modern blend — new inventions"
-                    goals.extend(["decode_ancient_description", "map_to_modern_science",
-                                   "identify_materials_processes", "propose_reconstruction",
-                                   "design_experiment"])
+        # Billing gate — config se (blueprint: "allow_ancient_tech Jarvis only")
+        if not allow_ancient:
+            domains = [
+                d for d in domains
+                if d not in ["scriptural", "ayurveda"]
+            ]
 
-                elif intent_type == "planning":
-                    # Blueprint: "Chanakya-style strategy"
-                    goals.extend(["define_objective", "identify_constraints",
-                                   "chanakya_strategy_analysis", "multi_step_plan",
-                                   "risk_assessment"])
+        if not domains:
+            domains = ["general"]
 
-                elif intent_type == "mixed":
-                    goals.extend(["multi_angle_analysis", "identify_primary_intent",
-                                   "decompose_sub_questions", "synthesize_answer"])
+        logging.info(f"[Layer1 Ph1.6] domains={domains}")
 
-                else:  # general
-                    goals.extend(["understand_context", "provide_relevant_answer"])
-
-                return goals
-        
-        decomposer = GoalDecomposer()
-        sub_goals = decomposer.decompose(normalized_query, intent_type)
-        
-        layer1_state["sub_goals"] = sub_goals
-
-        
-        #===================================================
-        # =====Phase 1.4 : Query Expansion  =====
-        #=================================================
-        class QueryExpander:
-            def expand(self, q: str, sub_goals: list):
-                # Blueprint: "Internally expanded semantic queries"
-                expansions = [q]  # original hamesha pehle
-
-                goal_to_expansion = {
-                    "retrieve_exact_fact":              q + " exact definition fact",
-                    "verify_source":                    q + " source reference citation",
-                    "cross_check":                      q + " verification evidence",
-                    "understand_core_concept":          q + " core concept explanation",
-                    "find_related_concepts":            q + " related concepts connections",
-                    "explain_with_examples":            q + " examples real-world application",
-                    "identify_steps":                   q + " step by step process",
-                    "find_dependencies":                q + " dependencies prerequisites",
-                    "ethical_evaluation":               q + " ethical implications dharma",
-                    "dharma_check":                     q + " dharma righteousness vedic ethics",
-                    "philosophical_analysis":           q + " philosophical meaning vedic perspective",
-                    "find_vedic_parallel":              q + " vedic scripture parallel ancient wisdom",
-                    "modern_interpretation":            q + " modern science interpretation",
-                    "deep_literature_search":           q + " detailed research study",
-                    "identify_sources":                 q + " ancient texts sources references",
-                    "compare_perspectives":             q + " multiple perspectives comparison",
-                    "check_evidence":                   q + " evidence proof verification",
-                    "compare_with_modern_knowledge":    q + " modern science comparison",
-                    "vedic_scripture_cross_reference":  q + " vedic scripture cross reference",
-                    "decode_ancient_description":       q + " ancient Sanskrit decode scientific basis",
-                    "map_to_modern_science":            q + " modern science equivalent mapping",
-                    "identify_materials_processes":     q + " materials processes engineering",
-                    "propose_reconstruction":           q + " reconstruction prototype design",
-                    "define_objective":                 q + " objective goal definition",
-                    "chanakya_strategy_analysis":       q + " Chanakya Arthashastra strategy",
-                    "multi_step_plan":                  q + " step by step plan strategy",
-                    "risk_assessment":                  q + " risk factors challenges",
-                    "multi_angle_analysis":             q + " multiple angles perspectives",
-                    "decompose_sub_questions":          q + " sub questions breakdown",
-                }
-
-                for goal in sub_goals:
-                    expansion = goal_to_expansion.get(goal)
-                    if expansion and expansion not in expansions:
-                        expansions.append(expansion)
-
-                return expansions
-        
-        expander = QueryExpander()
-        expanded_queries = expander.expand(normalized_query, sub_goals)
-        
-        layer1_state["expanded_queries"] = expanded_queries
-
-        
-        #=================================================
-        # =====Phase 1.5 : Reasoning Depth Estimation =====
-        #==================================================
-        class ReasoningDepthEstimator:
-            def estimate(self, sub_goals: list, intent_type: str = "general"):
-                # Blueprint: "Short answer chalega ya heavy multi-layer reasoning?"
-
-                heavy_goals = {
-                    "deep_literature_search", "compare_perspectives", "check_evidence",
-                    "vedic_scripture_cross_reference", "decode_ancient_description",
-                    "map_to_modern_science", "philosophical_analysis",
-                    "chanakya_strategy_analysis", "multi_angle_analysis",
-                    "propose_reconstruction", "find_vedic_parallel"
-                }
-                medium_goals = {
-                    "understand_core_concept", "find_related_concepts", "ethical_evaluation",
-                    "identify_steps", "modern_interpretation", "explain_with_examples"
-                }
-                light_goals = {
-                    "retrieve_exact_fact", "verify_source", "cross_check",
-                    "understand_context", "provide_relevant_answer"
-                }
-
-                heavy_count  = sum(1 for g in sub_goals if g in heavy_goals)
-                medium_count = sum(1 for g in sub_goals if g in medium_goals)
-                light_count  = sum(1 for g in sub_goals if g in light_goals)
-
-                # Intent-based override
-                if intent_type in ["invention", "research", "philosophical"]:
-                    if heavy_count >= 2:
-                        return "very_deep"
-                    return "deep"
-
-                if intent_type in ["planning", "mixed"]:
-                    return "deep"
-
-                # Goal-count based
-                if heavy_count >= 3:
-                    return "very_deep"
-                if heavy_count >= 1 or medium_count >= 3:
-                    return "deep"
-                if medium_count >= 1:
-                    return "normal"
-
-                return "shallow"
-        
-        depth_engine = ReasoningDepthEstimator()
-        required_depth = depth_engine.estimate(sub_goals, intent_type)
-        
-        layer1_state["required_depth"] = required_depth
-
-        #=======================================================
-        # =====Phase 1.6 : Knowledge domain mapping (vedic + modern) =====
-        #=======================================================
-        class KnowledgeDomainMapper:
-            def map(self, q: str):
-                # Blueprint: "Scriptures, Science, Ethics, Philosophy, Technology"
-                domains = []
-
-                scriptural_kw = ["veda", "purana", "dharma", "viman", "upanishad",
-                                  "gita", "ramayana", "mahabharata", "scripture",
-                                  "arthashastra", "chanakya", "sanskrit", "mantra",
-                                  "ayurveda", "shastra", "samhita", "tantra", "agama",
-                                  "vastu", "jyotish", "vedic", "ancient indian",
-                                  "temple", "ritual", "yantra", "sutra"]
-
-                scientific_kw = ["science", "physics", "chemistry", "biology",
-                                  "mathematics", "engineering", "quantum", "energy",
-                                  "frequency", "resonance", "metallurgy", "aerodynamic",
-                                  "plasma", "electromagnetic", "acoustic", "geometry"]
-
-                technology_kw = ["technology", "tech", "machine", "device", "aircraft",
-                                  "engine", "propulsion", "alloy", "material", "construct",
-                                  "build", "design", "prototype", "invention", "innovation",
-                                  "ai", "algorithm", "code", "software", "hardware"]
-
-                ethics_kw     = ["ethics", "dharma", "moral", "right", "wrong",
-                                  "should", "duty", "karma", "justice", "truth", "satya"]
-
-                philosophy_kw = ["philosophy", "consciousness", "soul", "atma", "brahman",
-                                  "meaning", "existence", "reality", "advaita", "vedanta",
-                                  "samkhya", "yoga", "meditation", "enlightenment"]
-
-                history_kw    = ["history", "ancient", "historical", "civilization",
-                                  "culture", "tradition", "bharat", "india", "heritage"]
-
-                if any(x in q for x in scriptural_kw):
-                    domains.append("scriptural")
-                if any(x in q for x in scientific_kw):
-                    domains.append("scientific")
-                if any(x in q for x in technology_kw):
-                    domains.append("technology")
-                if any(x in q for x in ethics_kw):
-                    domains.append("ethics")
-                if any(x in q for x in philosophy_kw):
-                    domains.append("philosophy")
-                if any(x in q for x in history_kw):
-                    domains.append("history")
-
-                # Fallback — koi domain detect nahi hua
-                if not domains:
-                    domains.append("general")
-
-                return list(set(domains))
-        
-        domain_mapper = KnowledgeDomainMapper()
-        config = config or {}
-        # allow_ancient_tech False hai toh scriptural domain remove karo
-        if not config.get("allow_ancient_tech", False) and "scriptural" in domains:
-            domains.remove("scriptural")
-            if not domains:
-                domains.append("general")
-        domains = domain_mapper.map(normalized_query)
-        
-        layer1_state["domains"] = domains
-
-        
-        #========================================================
-        #======== Phase 1.7 : Intent Bundle ========
-        #=======================================================
+        # ════════════════════════════════════
+        # PHASE 1.7 — Intent Bundle
+        # Blueprint: "Layer 1 ka output ek object hota hai
+        #              jo SAARI layers use karti hain"
+        # ════════════════════════════════════
         intent_bundle = {
-            "raw_query":        layer1_state["raw_query"],
-            "normalized_query": normalized_query,
-            "intent_type":      intent_type,       # Phase 1.2 output
-            "thinking_type":    intent_type,       # Layer 1 ka output — main() mein setdefault hatao
-            "sub_goals":        sub_goals,         # Phase 1.3 output
-            "expanded_queries": expanded_queries,  # Phase 1.4 output
-            "required_depth":   required_depth,    # Phase 1.5 output
-            "domains":          domains,           # Phase 1.6 output
-            "reasoning_plan":   sub_goals[:3]      # Phase 1.7 — top goals = reasoning plan
+            "raw_query":         raw_query,
+            "normalized_query":  normalized_query,
+            "query_embedding":   query_emb.tolist(),
+            "intent_type":       intent_type,
+            "thinking_type":     thinking_type,
+            "intent_scores":     intent_scores,
+            "sub_goals":         sub_goals,
+            "expanded_queries":  expanded_queries,
+            "required_depth":    required_depth,
+            "domains":           domains,
+            "domain_scores":     domain_scores,
+            "reasoning_plan":    sub_goals[:3],
+            # spaCy signals — Layer 2, 3 ke liye
+            "entities":          entities,
+            "noun_chunks":       noun_chunks,
+            "n_sentences":       n_sentences,
         }
 
         state["layer1_intent_bundle"] = intent_bundle
@@ -3075,7 +3196,8 @@ async def main(
     state = intent_engine.process(
         user_query=question,
         state=state,
-        config=config
+        config=config,
+        memory_graph=memory_graph_full   # Layer 4 hook — Blueprint aligned
     )
     layer1_bundle = state.get("layer1_intent_bundle", {})
     # state["layer1_intent_bundle"] now contains:
@@ -3085,10 +3207,10 @@ async def main(
     # - domains
     # - required_depth
     #----------------------------------------------------------------
-    # Layer-1 Hard Guarantees (Production Safety)
-    layer1_bundle.setdefault("normalized_query", question)           #parmanent
-    layer1_bundle.setdefault("thinking_type", "mixed")
-    layer1_bundle.setdefault("reasoning_plan", [])
+    # # Layer-1 Hard Guarantees (Production Safety)
+    # layer1_bundle.setdefault("normalized_query", question)           #parmanent
+    # layer1_bundle.setdefault("thinking_type", "mixed")                                  delete krna hai
+    # layer1_bundle.setdefault("reasoning_plan", [])
 
     #----------------------------------------------------------------
 

@@ -13,6 +13,7 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 from collections import defaultdict
 from .storage import MemoryStorageLayer  # Storage layer se config aur connections ke liye hook
+import logging
 
 EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
 embedder = SentenceTransformer(EMBEDDING_MODEL)
@@ -39,7 +40,6 @@ class MemoryGraphNode:
             "strength": self.strength
         }
 
-
 class MemoryGraphEdge:
     """Concept ke beech relation"""
     def __init__(self, source_id: str, target_id: str, weight: float = 1.0, relation_type: str = "co-occurrence"):
@@ -65,9 +65,134 @@ class MemoryGraph:
         self.storage = MemoryStorageLayer()              # Storage layer se config aur connections ke liye hook
 
     async def init_connections(self):
-        """PostgreSQL + Redis connect (storage layer se aa sakta hai)"""
+        """
+        PostgreSQL + Redis connect karo
+        + Existing nodes in-memory cache mein load karo
+        Blueprint: "Layer 4 — REAL BRAIN — Persistent, tier-aware"
+        """
         self.pg_pool = await asyncpg.create_pool(os.getenv("DATABASE_URL"))
-        self.redis = await redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        self.redis   = await redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        )
+
+        # Existing nodes cache mein load karo — get_similar_concepts() ke liye
+        # Blueprint: "Memory Graph = samjhna" — graph ko warm karo startup pe
+        try:
+            async with self.pg_pool.acquire() as conn:
+                rows = await conn.fetch(
+                    "SELECT id, concept, embedding, metadata, strength "
+                    "FROM memory_graph_nodes "
+                    "ORDER BY strength DESC LIMIT 1000"
+                    # Top 1000 strongest nodes — RAM efficient
+                )
+                for row in rows:
+                    node = MemoryGraphNode(
+                        concept   = row["concept"],
+                        embedding = row["embedding"],
+                        metadata  = row["metadata"] or {}
+                    )
+                    node.id       = row["id"]
+                    node.strength = row["strength"]
+                    self.nodes[node.id] = node
+
+            logging.info(
+                f"[MemoryGraph] {len(self.nodes)} nodes loaded into cache"
+            )
+        except Exception as e:
+            logging.warning(f"[MemoryGraph] Node preload failed: {e} — starting empty")
+   
+
+    # ## Flow ab kaisa hoga:
+    # ```
+    # App startup
+    #     ↓
+    # memory_graph.init_connections()
+    #     ↓
+    # PostgreSQL se top-1000 nodes → self.nodes (in-memory)
+    #     ↓
+    # Layer 1 call (sync)
+    #     ↓
+    # get_similar_concepts(query_embedding) 
+    #     → self.nodes pe cosine similarity (sync, fast)
+    #     → hidden goals nikalta hai
+    #     ↓
+    # estimate_relevance(query)
+    #     → depth decide karne mein help karta hai
+    #     ↓
+    # Jaise jaise conversations hote hain:
+    #     sync_to_memory_graph() → naye concepts PostgreSQL mein
+    #     → self.nodes mein bhi add ho (graph grow karta hai)    
+
+#-----------------------------------
+    def get_similar_concepts(self, query_embedding: list, top_k: int = 6) -> list:
+        """
+        Layer 1 Phase 1.3 + 1.4 ka hook — SYNCHRONOUS
+        Blueprint: "Bina Memory Graph ke Intent sirf text hoga, Meaning nahi"
+
+        In-memory nodes cache se cosine similarity nikalo.
+        No async needed — cache already loaded hai init_connections() mein.
+        PostgreSQL se fresh pull sirf async methods ke liye.
+        """
+        if not self.nodes:
+            # Graph abhi empty hai — training se nodes aayenge
+            return []
+
+        query_vec = np.array(query_embedding)
+        scored = []
+
+        for node_id, node in self.nodes.items():
+            node_vec = np.array(node.embedding)
+            denom = np.linalg.norm(query_vec) * np.linalg.norm(node_vec)
+            if denom == 0:
+                continue
+            similarity = float(np.dot(query_vec, node_vec) / denom)
+            scored.append({
+                "concept":  node.concept,
+                "score":    similarity,
+                "strength": node.strength,   # training se bada hua node zyada relevant
+                "id":       node_id
+            })
+
+        # Strength se weight karo — zyada trained concept = zyada relevant goal
+        # Blueprint: "training se evolve hota hai"
+        for item in scored:
+            item["weighted_score"] = item["score"] * (1 + item["strength"] * 0.1)
+
+        scored.sort(key=lambda x: x["weighted_score"], reverse=True)
+        return scored[:top_k]
+
+
+    def estimate_relevance(self, query: str) -> float:
+        """
+        Layer 1 Phase 1.5 ka hook — SYNCHRONOUS
+        Query ke liye memory graph ki overall relevance score nikalo.
+
+        High score = graph mein is topic ke concepts strong hain
+        Low score  = topic naya hai, graph mein nahi
+        """
+        if not self.nodes:
+            return 0.0
+
+        # Query embed karo — same model jo graph_sync use karta hai
+        query_vec = embedder.encode(query)
+
+        similarities = []
+        for node in self.nodes.values():
+            node_vec = np.array(node.embedding)
+            denom = np.linalg.norm(query_vec) * np.linalg.norm(node_vec)
+            if denom == 0:
+                continue
+            sim = float(np.dot(query_vec, node_vec) / denom)
+            # Strength se weight — strong nodes ki similarity zyada matter karti hai
+            similarities.append(sim * node.strength)
+
+        if not similarities:
+            return 0.0
+
+        # Top-3 average — ek outlier se score distort na ho
+        top3 = sorted(similarities, reverse=True)[:3]
+        return float(np.mean(top3))
+    #----------------------------------------
 
     async def _get_or_create_node(self, concept: str, email: str = None) -> MemoryGraphNode:
         """Concept node banao ya fetch karo"""
@@ -169,6 +294,11 @@ class MemoryGraph:
         for concept in top_concepts:
             node = await self._get_or_create_node(concept, tier)
             nodes[concept] = node
+
+        # sync_to_memory_graph() ke andar, nodes banane ke baad:
+        # In-memory cache bhi update karo — get_similar_concepts() live rahega
+        for concept, node in nodes.items():
+            self.nodes[node.id] = node   # yeh line add karo    
 
         # Edges banao (co-occurrence)
         for i, c1 in enumerate(top_concepts):
