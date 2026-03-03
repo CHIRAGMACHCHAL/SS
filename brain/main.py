@@ -675,9 +675,9 @@ class WorldModelEngine:
 
         # assumption_checking active hai to hidden assumptions mutated query mein daal do
         if cognitive_profile.get("assumption_checking") and world_state.get("hidden_assumptions"):
-            assumption_context = " | ".join(world_state["hidden_assumptions"][:3])
-            mutated_question = mutated_question + f" [Challenge these assumptions: {assumption_context}]"
-            logging.info(f"[Assumption Checking] Injected into query")        
+                assumption_context = " | ".join(world_state["hidden_assumptions"][:3])
+                mutated_question = mutated_question + f" [Challenge these assumptions: {assumption_context}]"
+                logging.info(f"[Assumption Checking] Injected into query")        
 
         return world
 
@@ -2711,6 +2711,7 @@ class MemoryAwarePruner:
                 pruned.append(q)
         return pruned
 
+#--------LAYER 2 KA PHASE 2.5 MEMORY AWARE QUERY PRUNING (LAYER 4 HOOK)
 class MemoryAwareQueryPruner:
     def prune(self, queries, memory_graph, intent_state):
         """
@@ -2723,15 +2724,25 @@ class MemoryAwareQueryPruner:
         seen = set()
 
         for q in queries:
+            key = q.lower().strip()
+            if key in seen:
+                continue
+            seen.add(key)
+
             score = memory_graph.estimate_relevance(q)
 
-            key = q.lower().strip()
+            # Blueprint: "kya ye knowledge already store hai? drop karo"
+            if score > 0.85:
+                # Already strongly in memory — skip, waste hogi
+                continue
 
-            if key not in seen:
-                seen.add(key)
+            # Blueprint: "kuch deeper" — low memory = naya topic = deeper explore karo
+            if score < 0.2 and intent_state in ["research", "invention"]:
+                pruned.append(q + " — deep investigation required")
+            else:
                 pruned.append(q)
 
-        return pruned
+        return pruned if pruned else queries  # fallback: kuch to dena hai
 
 #================================================
 #==========LAYER 2 : ADAPTIVE QUERY EXPANSION(DYNAMICS)==========
@@ -2743,61 +2754,76 @@ class IntentQueryBrancher:
 
         if intent_state == "research":
             for goal in sub_goals:
-                branches.append({
-                    "type": "exploratory",
-                    "goal": goal
-                })
+                branches.append({"type": "exploratory", "goal": goal})
 
         elif intent_state == "execution":
-            branches.append({
-                "type": "procedural",
-                "goal": "steps / how-to"
-            })
+            branches.append({"type": "procedural", "goal": "step-by-step implementation"})
+            branches.append({"type": "causal", "goal": "why each step matters"})
 
-        elif intent_state == "explanation":
-            branches.append({
-                "type": "conceptual",
-                "goal": "why / theory"
-            })
+        elif intent_state == "invention":
+            branches.append({"type": "hypothetical", "goal": "design possibilities"})
+            branches.append({"type": "comparative", "goal": "ancient vs modern equivalent"})
+            branches.append({"type": "causal", "goal": "underlying scientific principle"})
+
+        elif intent_state == "planning":
+            branches.append({"type": "declarative", "goal": "objective definition"})
+            branches.append({"type": "causal", "goal": "strategic dependencies"})
+
+        elif intent_state == "analysis":
+            branches.append({"type": "comparative", "goal": "multi-angle evaluation"})
+            branches.append({"type": "causal", "goal": "root cause identification"})
+
+        elif intent_state == "information":
+            branches.append({"type": "declarative", "goal": "exact answer"})
+            branches.append({"type": "exploratory", "goal": "related context"})
 
         else:
-            branches.append({
-                "type": "general",
-                "goal": "overview"
-            })
+            branches.append({"type": "exploratory", "goal": "overview"})
 
         return branches
 #.............. Phase 2.2 : QUERY GRANULARITY DECISION ..........
 class QueryGranularityDecider:
     def decide(self, intent_state, required_depth):
-        if required_depth == "deep" or intent_state == "research":
+        if required_depth in ["deep", "very_deep"] or intent_state in ["research", "invention"]:
             return "fine"
-        elif required_depth == "broad":
-            return "coarse"
+        elif intent_state in ["philosophical", "analysis"]:
+            return "abstract"
+        elif required_depth == "shallow" or intent_state == "information":
+            return "narrow"
         return "normal"
 
 #.................. Phase 2.3 : DYNAMIC QUERY SHAPE GENERATOR ..........
 class QueryShapeGenerator:
     def generate(self, base_question, branch, granularity):
-        if branch["type"] == "exploratory":
-            return f"{base_question} focusing on {branch['goal']} in detail"
+        t = branch["type"]
+        goal = branch.get("goal", "")
 
-        if branch["type"] == "procedural":
-            return f"Step-by-step guide for {base_question}"
-
-        if branch["type"] == "conceptual":
-            return f"Theoretical explanation of {base_question}"
+        if t == "declarative":
+            return f"What exactly is: {base_question}"
+        if t == "exploratory":
+            return f"{base_question} — explore: {goal}"
+        if t == "hypothetical":
+            return f"If we were to {goal}, how would {base_question} work?"
+        if t == "comparative":
+            return f"Compare {goal} in context of: {base_question}"
+        if t == "causal":
+            return f"Why and how does {goal} relate to: {base_question}"
+        if t == "procedural":
+            return f"Step-by-step: {goal} for {base_question}"
 
         return base_question
 #...............Phase 2.4 : ABSTRACTION LEVEL MODULATOR ..........
 class AbstractionModulator:
     def adjust(self, query, granularity):
         if granularity == "fine":
-            return query + " with technical precision and edge cases"
-
-        if granularity == "coarse":
-            return "High-level overview of " + query
-
+            # Concrete level — facts aur data
+            return query + " with specific data, measurements and verified facts"
+        if granularity == "abstract":
+            # Meta level — ethics, philosophy
+            return f"From a philosophical and ethical perspective: {query}"
+        if granularity == "narrow":
+            # Conceptual level — theory
+            return f"Core concept and theory behind: {query}"
         return query
 
 
@@ -2805,11 +2831,14 @@ class AbstractionModulator:
 class QueryBudgetAllocator:
     def allocate(self, queries, cognitive_profile):
         budget = cognitive_profile.get("max_docs", 6)
-        prioritized = sorted(
-            queries,
-            key=lambda q: len(q),
-            reverse=True
-        )
+        # Blueprint: "intent importance" — causal/hypothetical pehle, general baad mein
+        priority_keywords = ["why", "how", "deep", "investigate", "principle", "vedic", "ancient"]
+
+        def priority_score(q):
+            q_lower = q.lower()
+            return sum(1 for kw in priority_keywords if kw in q_lower)
+
+        prioritized = sorted(queries, key=priority_score, reverse=True)
         return prioritized[:budget]
 #............Phase 2.7 : FINAL QUERY BUNDLE OUTPUT..........
 class AdaptiveQueryExpansionEngine:
@@ -3179,7 +3208,7 @@ async def main(
 
     # Layer 4 Full Memory Graph (Blueprint ka REAL BRAIN - Persistent + Tier-aware)
     memory_graph_full = memory_graph
-    await memory_graph_full.init_connections()
+    await memory_graph_full.init_connections(memory_scope=config.get("memory_scope", "public_only"))
 
     # Layer 8 + Layer 4 combined initialization complete
 
@@ -3399,7 +3428,7 @@ async def main(
     # ──────────────── Layer 8: Fetch previous conversation history ────────────────
     history = await memory_layer.get_conversation_history(
         conversation_id=conversation_id,
-        tier=tier
+        email=config.get("email", None)  # email se tier khud nikalti hai
     )
 
     # History ko current context mein mix kar do (very useful for continuity)
@@ -4025,7 +4054,7 @@ Question:
         conversation_id=conversation_id,
         question=question,
         answer=final_response,
-        tier=tier,
+        email=config.get("email", None),
         project_context="Vimana Project" if config.get("long_term_memory", False) else None
     )
 
@@ -4033,7 +4062,7 @@ Question:
     await memory_graph_full.sync_to_memory_graph(
         question=question,
         answer=final_response,
-        tier=tier
+        email=config.get("email", None)
     )
 
     # Optional debug

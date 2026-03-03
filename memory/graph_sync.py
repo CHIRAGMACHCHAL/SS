@@ -63,8 +63,7 @@ class MemoryGraph:
         self.nodes: Dict[str, MemoryGraphNode] = {}      # in-memory cache
         self.edges: List[MemoryGraphEdge] = []           # in-memory cache
         self.storage = MemoryStorageLayer()              # Storage layer se config aur connections ke liye hook
-
-    async def init_connections(self):
+    async def init_connections(self, memory_scope: str = "public_only"):
         """
         PostgreSQL + Redis connect karo
         + Existing nodes in-memory cache mein load karo
@@ -79,12 +78,18 @@ class MemoryGraph:
         # Blueprint: "Memory Graph = samjhna" — graph ko warm karo startup pe
         try:
             async with self.pg_pool.acquire() as conn:
-                rows = await conn.fetch(
-                    "SELECT id, concept, embedding, metadata, strength "
-                    "FROM memory_graph_nodes "
-                    "ORDER BY strength DESC LIMIT 1000"
-                    # Top 1000 strongest nodes — RAM efficient
-                )
+                if memory_scope == "all":
+                    rows = await conn.fetch(
+                        "SELECT id, concept, embedding, metadata, strength "
+                        "FROM memory_graph_nodes ORDER BY strength DESC LIMIT 2000"
+                    )
+                else:
+                    rows = await conn.fetch(
+                        "SELECT id, concept, embedding, metadata, strength "
+                        "FROM memory_graph_nodes WHERE tier != 'jarvis' "
+                        "ORDER BY strength DESC LIMIT 1000"
+                        # Top 1000 strongest nodes — RAM efficient
+                    )
                 for row in rows:
                     node = MemoryGraphNode(
                         concept   = row["concept"],
@@ -265,11 +270,11 @@ class MemoryGraph:
                     """,
                     source_id, target_id, weight, relation_type
                 )
-
-    async def sync_to_memory_graph(self, question: str, answer: str, email: str = None):
+    async def sync_to_memory_graph(self, question: str, answer: str, email: str = None, config: dict = None):
         """
         Phase 6 + Conversation hook: Question + Answer se concepts + relations banao
         """
+        config = config or {}
         if email is None:
             email = "chirag@example.com"
         config = await self.storage.get_storage_config(email)
@@ -292,7 +297,7 @@ class MemoryGraph:
         # Nodes banao ya fetch karo
         nodes = {}
         for concept in top_concepts:
-            node = await self._get_or_create_node(concept, tier)
+            node = await self._get_or_create_node(concept, email)
             nodes[concept] = node
 
         # sync_to_memory_graph() ke andar, nodes banane ke baad:
@@ -307,10 +312,14 @@ class MemoryGraph:
                     await self._add_or_update_edge(nodes[c1].id, nodes[c2].id, weight=0.8)
 
         # Jarvis special: Identity reinforcement node
-        if tier == "jarvis":
-            identity_node = await self._get_or_create_node("jarvis_identity", tier)
+        #-------------------------------------------
+        if config.get("identity_reinforcement", False):
+            identity_node = await self._get_or_create_node("jarvis_identity", email)
             for concept in top_concepts:
                 await self._add_or_update_edge(identity_node.id, nodes[concept].id, weight=1.2, relation_type="identity_core")
+
+        #-------------------------------------
+        
 
         print(f"[Layer 4 Sync] → {len(top_concepts)} concepts, {len(top_concepts)*(len(top_concepts)-1)//2} edges added/updated")
 
@@ -330,7 +339,7 @@ class MemoryGraph:
         expanded = [query]
 
         for word in words[:3]:  # top 3 se shuru
-            node = await self._get_or_create_node(word, tier)
+            node = await self._get_or_create_node(word, email)
             if not node:
                 continue
 
@@ -361,7 +370,7 @@ class MemoryGraph:
         config = await self.storage.get_storage_config(email)
         tier = config["tier"]
 
-        node = await self._get_or_create_node(concept, tier)
+        node = await self._get_or_create_node(concept, email)
         if not node:
             return []
 

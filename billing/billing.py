@@ -53,6 +53,9 @@ class BillingLayer:
                 "meta_confidence_threshold": "medium",  # medium se neeche retry
                 "meta_self_critical": True,   # Jarvis only — extra flag
 
+                "memory_scope":           "all",
+                "identity_reinforcement": True,
+
                 "allow_research":          True,
                 "allow_analysis":          True,
                 "allow_execution":         True,   # full power
@@ -71,7 +74,7 @@ class BillingLayer:
                 "max_docs": 999999,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
-                "query_complexity": "high",    
+                "query_complexity": "maximum",  # Jarvis = 8 goals — full power    
                 "allow_self_training": True,  
                 "max_tokens": 32768,  
                 "collection": "jarvis_private",  
@@ -109,10 +112,13 @@ class BillingLayer:
                 "allow_tool_invocation":      False,
                 "allow_execution_monitoring": False,
 
+                "memory_scope":           "public_only",
+                "identity_reinforcement": False,
+
                 "max_docs": 50,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
-                "query_complexity": "high",    
+                "query_complexity": "very_high",    
                 "allow_self_training": False,  
                 "max_tokens": 20000,  
                 "collection": "public_core",  
@@ -148,6 +154,9 @@ class BillingLayer:
                 "allow_action_selection":     False,
                 "allow_tool_invocation":      False,
                 "allow_execution_monitoring": False,
+
+                "memory_scope":           "public_only",
+                "identity_reinforcement": False,
 
                 "max_docs": 35,  
                 "deep_reasoning": True,  
@@ -189,6 +198,9 @@ class BillingLayer:
                 "allow_tool_invocation":      False,
                 "allow_execution_monitoring": False,
 
+                "memory_scope":           "public_only",
+                "identity_reinforcement": False,
+
 
                 "max_docs": 25,  
                 "deep_reasoning": True,  
@@ -229,6 +241,9 @@ class BillingLayer:
                 "allow_action_selection":     False,
                 "allow_tool_invocation":      False,
                 "allow_execution_monitoring": False,
+
+                "memory_scope":           "public_only",
+                "identity_reinforcement": False,
  
 
 
@@ -271,6 +286,9 @@ class BillingLayer:
                 "allow_action_selection":     False,#9--------------------------------------
                 "allow_tool_invocation":      False,#10-------------------------------------
                 "allow_execution_monitoring": False,#11----------------------------------
+
+                "memory_scope":           "public_only",
+                "identity_reinforcement": False,
 
 
 

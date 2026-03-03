@@ -84,10 +84,18 @@ class Orchestrator:
             "processing_time": elapsed
         }
     async def _get_memory(self, conversation_id: str) -> str:
-        history = await self.memory_layer.get_history(conversation_id)
+        return await self.memory_layer.get_conversation_history(
+            conversation_id=conversation_id
+        )
         return history or ""
 
     async def _update_memory(self, conversation_id: str, question: str, answer: str):
-        await self.memory_layer.save_message(conversation_id, "user", question)
-        await self.memory_layer.save_message(conversation_id, "assistant", answer)
+        await self.memory_layer.update_conversation(
+            conversation_id=conversation_id,
+            question=question,
+            answer=answer
+        )
         pass
+
+    
+    
