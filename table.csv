@@ -1,4 +1,0 @@
-Level,Kaise Secrets Store Hote Hain,Example Companies / Systems,Tera Project Ke Liye Abhi Kya Karna Chahiye?
-Development (Local PC),.env file (git ignore kiya hua),Har developer ke local machine pe,Abhi yahi kar rahe hain – bilkul sahi
-CI/CD & Staging,GitHub Secrets / GitLab CI Variables / CircleCI Env,"GitHub Actions, GitLab, Jenkins",Jab deploy karenge tab yeh use karenge
-Production (Live Server),AWS Secrets Manager / GCP Secret Manager / HashiCorp Vault / Kubernetes Secrets,"OpenAI, xAI, Meta, Google",Jab cloud pe deploy karenge tab yeh lagega
