@@ -2494,14 +2494,21 @@ class IntentDecompositionEngine:
         use_emergent     = config.get("use_emergent_concepts",  False)
         query_complexity = config.get("query_complexity",       "low")
         
-        # Blueprint: "PUBLIC: Safe, Light, Shallow vs JARVIS: Heavy, deep"
+
+        #-------------------------------------------
+        # Blueprint: "har tier ke badhte hue order mein power increase"
+        # Individual tiers (1-3): Gradual learning curve
+        # Business tiers (4-5): Company needs - research/analysis focus
+        # Jarvis (6): Unlimited - invention/ancient tech decode
         _complexity_to_max_goals = {
-            "low":      2,   # free
-            "normal":   3,   # paid
-            "high":     5,   # ultra_paid / business / enterprise
-            "very_high": 6,  # enterprise
-            "maximum":  8,   # jarvis
+            "low":       2,   # Tier 1: Free - curious individual, basic exploration
+            "normal":    4,   # Tier 2: Paid - serious learner, deeper questions
+            "high":      6,   # Tier 3: Ultra Paid - professional individual, complex analysis
+            "very_high": 8,   # Tier 4: Business Small - team research, multi-goal projects
+            "expert":    10,  # Tier 5: Enterprise - org-level, comprehensive investigation
+            "maximum":   15,  # Tier 6: Jarvis - unlimited, ancient tech decode, invention
         }
+        #----------------------------------------
         max_goals = _complexity_to_max_goals.get(query_complexity, 2)
         # Memory Graph — primary source (Blueprint aligned)
         if memory_graph is not None and use_emergent:
@@ -2632,13 +2639,49 @@ class IntentDecompositionEngine:
             required_depth = "deep"
         else:
             required_depth = "normal"
-        if not deep_reasoning:
-            # PUBLIC tiers — max "normal", kabhi deep/very_deep nahi
-            if required_depth in ["deep", "very_deep"]:
-                required_depth = "normal"
-        elif deep_reasoning and required_depth in ["normal", "shallow"]:
-            # deep_reasoning True = Jarvis/Enterprise — minimum deep
+        # if not deep_reasoning:
+        #     # PUBLIC tiers — max "normal", kabhi deep/very_deep nahi
+        #     if required_depth in ["deep", "very_deep"]:
+        #         required_depth = "normal"
+        # elif deep_reasoning and required_depth in ["normal", "shallow"]:
+        #     # deep_reasoning True = Jarvis/Enterprise — minimum deep
+        #     required_depth = "deep"
+        #----------------------------
+        # Blueprint: Tier-aware depth adjustment
+        # Free: Max shallow (fast answers only)
+        # Paid: Max normal (standard reasoning)
+        # Ultra/Business/Enterprise: Deep allowed
+        # Jarvis: Minimum deep (always heavy reasoning)
+
+        tier_depth_caps = {
+            "free":          "shallow",      # Tier 1: Quick answers only
+            "paid":          "normal",       # Tier 2: Standard reasoning
+            "ultra_paid":    "deep",         # Tier 3: Complex analysis allowed
+            "business_small":"deep",         # Tier 4: Research-grade
+            "enterprise":    "very_deep",    # Tier 5: Org-level investigation
+            "jarvis":        "very_deep",    # Tier 6: Maximum depth always
+        }
+
+        tier = config.get("tier", "free")
+        max_allowed_depth = tier_depth_caps.get(tier, "shallow")
+
+        # Depth hierarchy: shallow < normal < deep < very_deep
+        depth_levels = ["shallow", "normal", "deep", "very_deep"]
+        max_depth_index = depth_levels.index(max_allowed_depth)
+        current_depth_index = depth_levels.index(required_depth)
+
+        # Cap depth based on tier
+        if current_depth_index > max_depth_index:
+            required_depth = max_allowed_depth
+            logging.info(f"[Layer1 Ph1.5] Depth capped to '{required_depth}' for tier '{tier}'")
+
+        # Jarvis minimum depth enforcement
+        if tier == "jarvis" and required_depth in ["shallow", "normal"]:
             required_depth = "deep"
+            logging.info(f"[Layer1 Ph1.5] Jarvis tier - minimum depth enforced: 'deep'")
+
+        #-----------------------------
+
         logging.info(
             f"[Layer1 Ph1.5] depth={required_depth} | "
             f"sents={n_sentences} | ents={n_entities} | "
@@ -2698,6 +2741,12 @@ class IntentDecompositionEngine:
             "entities":          entities,
             "noun_chunks":       noun_chunks,
             "n_sentences":       n_sentences,
+            # Tier metadata — downstream layers ke liye
+            "tier":              tier,
+            "max_goals":         max_goals,
+            "deep_reasoning_enabled": deep_reasoning,
+            "emergent_concepts_enabled": use_emergent,
+            "query_complexity":  query_complexity,
         }
 
         state["layer1_intent_bundle"] = intent_bundle

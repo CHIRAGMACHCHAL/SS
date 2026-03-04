@@ -118,7 +118,7 @@ class BillingLayer:
                 "max_docs": 50,  
                 "deep_reasoning": True,  
                 "use_emergent_concepts": True,  
-                "query_complexity": "very_high",    
+                "query_complexity": "expert",    
                 "allow_self_training": False,  
                 "max_tokens": 20000,  
                 "collection": "public_core",  
