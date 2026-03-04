@@ -18,6 +18,7 @@ from memory.ingestion import (
     JARVIS_COLLECTION
 )
 
+
 import re
 import numpy as np
 import logging
@@ -138,30 +139,51 @@ class MemoryGraphAdapter:
 
 def implicit_memory_retrieval(vector_db, question, k=12):
     """
-    Phase-2 implicit memory:
+    Phase 2.0 Implicit Memory.
+    Blueprint: 'Embeddings similarity se memory emerge hoti hai'
     - No hardcoded concepts
+    - No word length filters
+    - Semantic relevance = embedding cosine similarity
+    - Top chunks ARE the emergent memory — their semantic proximity IS the concept
     - Embedding similarity drives memory
     - Concepts emerge from retrieved chunks
     """
 
-    # Step 1: Raw semantic retrieval
+    # Step 1: Raw semantic retrieval via embedding similarity (Layer 4 hook)
     docs = vector_db.similarity_search(question, k=k)
+    if not docs:
+        return [], []
 
-    # Step 2: Extract emergent keywords (lightweight signal)
-    concept_counter = {}
+    # Step 2: Emergent concept extraction — semantic, not word-count
+    # Blueprint: "Words se emergent concepts nikalta hai"
+    # Real emergence = which retrieved chunks are MOST semantically close to each other
+    # Cross-chunk cosine similarity se cluster nikalo — common semantic core = concept
+    try:
+        encoder = SentenceTransformer(EMBEDDING_MODEL)
+        contents = [doc.page_content[:300] for doc in docs]  # first 300 chars per chunk
+        chunk_embeddings = encoder.encode(contents, normalize_embeddings=True)
 
-    for doc in docs:
-        words = doc.page_content.lower().split()
-        for w in words:
-            if len(w) > 5:   # noise filter
-                concept_counter[w] = concept_counter.get(w, 0) + 1
+        # Cosine similarity matrix
+        sim_matrix = np.dot(chunk_embeddings, chunk_embeddings.T)
 
-    # Step 3: Top emergent "concept hints"
-    emergent_concepts = sorted(
-        concept_counter,
-        key=concept_counter.get,
-        reverse=True
-    )[:8]
+        # Most connected chunk = emergent concept hub
+        connectivity = sim_matrix.sum(axis=1)
+        top_indices = np.argsort(connectivity)[::-1][:4]  # top 4 concept hubs
+
+        # Each hub chunk ka first sentence = concept label
+        emergent_concepts = []
+        for idx in top_indices:
+            first_sentence = contents[idx].split(".")[0].strip()
+            if first_sentence and first_sentence not in emergent_concepts:
+                emergent_concepts.append(first_sentence)
+
+    except Exception:
+        # Fallback: retrieved docs ki ordering hi concept emergence hai
+        emergent_concepts = [
+            doc.page_content.split(".")[0].strip()
+            for doc in docs[:4]
+            if doc.page_content.strip()
+        ]
 
     return docs, emergent_concepts
 
@@ -186,49 +208,40 @@ class CognitiveRouter:
 
         return "direct"
     
-    def route_with_context(
-            self,
-            *,
-            question: str,
-            intent,
-            domains,
-            required_depth
-        ) -> str:
-            """
-            FULL cognitive routing (heavy, non-lite)
-                    """
-    
-            # 1️⃣ Intent based routing
-            if intent in {"reasoning", "planning", "comparison"}:
-                primary_route = "reasoning_engine"
-    
-            elif intent in {"factual", "definition", "lookup"}:
-                primary_route = "knowledge_retrieval"
-    
-            elif intent in {"creative", "story", "idea"}:
-                primary_route = "creative_engine"
-    
-            else:
-                primary_route = "hybrid_engine"
-    
-            # 2️⃣ Domain override
-            if domains:
-                if "science" in domains or "tech" in domains:
-                    primary_route = "knowledge_retrieval"
-    
-                elif "philosophy" in domains:
-                    primary_route = "reasoning_engine"
-    
-            # 3️⃣ Depth modulation
-            if required_depth == "deep":
-                if primary_route == "knowledge_retrieval":
-                    primary_route = "hybrid_engine"
-    
-            # 4️⃣ Safety fallback (old router)
-            if not primary_route:
-                primary_route = self.route(question)
-    
-            return primary_route
+    def route_with_context(self, *, question, intent, domains, required_depth) -> str:
+        """
+        FULL cognitive routing (heavy, non-lite)
+        """
+        # Layer 1 ke exact intent values
+        if intent in {"research", "invention"}:
+            primary_route = "reasoning"
+        elif intent in {"factual", "information"}:
+            primary_route = "retrieval"
+        elif intent in {"planning", "analysis", "ethical", "philosophical", "conceptual"}:
+            primary_route = "reasoning"
+        elif intent in {"execution"}:
+            primary_route = "reasoning"   # execution = step-by-step = reasoning needed
+        elif intent in {"mixed"}:
+            primary_route = "reasoning"
+        else:
+            primary_route = "retrieval"
+
+        # Layer 1 ke exact domain names
+        if domains:
+            if "scriptural" in domains or "philosophy" in domains:
+                primary_route = "reasoning"
+            elif "scientific" in domains or "technology" in domains:
+                if primary_route == "retrieval":
+                    primary_route = "reasoning"  # science = hybrid needs reasoning
+
+        # Depth modulation
+        if required_depth in ["deep", "very_deep"]:
+            primary_route = "reasoning"
+
+        if not primary_route:
+            primary_route = self.route(question)
+
+        return primary_route
 
     def is_memory_query(self, q):
         return any(x in q for x in [
@@ -673,11 +686,17 @@ class WorldModelEngine:
             world["ethical_weight"] = "high"
             world["reasoning_depth"] = "max"
 
-        # assumption_checking active hai to hidden assumptions mutated query mein daal do
-        if cognitive_profile.get("assumption_checking") and world_state.get("hidden_assumptions"):
-                assumption_context = " | ".join(world_state["hidden_assumptions"][:3])
-                mutated_question = mutated_question + f" [Challenge these assumptions: {assumption_context}]"
-                logging.info(f"[Assumption Checking] Injected into query")        
+       
+        #----------------------------------------------------
+        # assumption_checking active hai — cognitive_profile se flag hai
+        # hidden_assumptions world model ne abhi build ki hain (world dict ke andar)
+        if cognitive_profile.get("assumption_checking"):
+            hidden = world.get("hidden_assumptions", [])
+            if hidden:
+                assumption_context = " | ".join(hidden[:3])
+                logging.info(f"[Assumption Checking] Active — {assumption_context}")
+        # ----------------------------------------        
+              
 
         return world
 
@@ -1021,7 +1040,7 @@ class CognitiveLoadController:
             profile = {
                 "use_chain": True,
                 "deep_reasoning": False,
-                "use_emergent_concepts": True,
+                "use_emergent_concepts": False,
                 "max_docs": 8,
                 "query_complexity": "normal",
                 "parallel_thinking": False,
@@ -1107,7 +1126,9 @@ class CognitiveLoadController:
             profile["use_chain"] = True
 
         elif route == "retrieval":
-            profile["use_emergent_concepts"] = True
+            # Sirf agar billing ne allow kiya ho
+            if config.get("use_emergent_concepts", False):
+                profile["use_emergent_concepts"] = True
             profile["max_docs"] = max(profile["max_docs"], 6)
 
         elif route == "memory":
@@ -1868,18 +1889,6 @@ class IntentStateEngine:
             return "information"
         if intent_type in ["conceptual", "factual"]:
             return "information"
-        #--------------------------
-        if intent_type in ["research", "analysis"]:
-            return "research"
-
-        if intent_type in ["execution", "action"]:
-            return "execution"
-
-        # 2️⃣ Multi-intent → research bias
-        if intent_type == "mixed":
-            if required_depth in ["deep", "very_deep"]:
-                return "research"
-            return "information"
 
         # 3️⃣ Sub-goal heuristic
         for goal in sub_goals:
@@ -1894,7 +1903,7 @@ class IntentStateEngine:
 
 
 # =========================
-# PHASE 2.7: SAFETY / CONSTRAINT LAYER
+# PHASE 2.7: SAFETY / CONSTRAINT LAYER (why & how)
 # =========================
 
 class SafetyConstraintEngine:
@@ -2756,24 +2765,24 @@ class IntentQueryBrancher:
             for goal in sub_goals:
                 branches.append({"type": "exploratory", "goal": goal})
 
-        elif intent_state == "execution":
-            branches.append({"type": "procedural", "goal": "step-by-step implementation"})
-            branches.append({"type": "causal", "goal": "why each step matters"})
-
         elif intent_state == "invention":
             branches.append({"type": "hypothetical", "goal": "design possibilities"})
             branches.append({"type": "comparative", "goal": "ancient vs modern equivalent"})
             branches.append({"type": "causal", "goal": "underlying scientific principle"})
 
+        elif intent_state == "execution":
+            branches.append({"type": "procedural", "goal": "step-by-step implementation"})
+            branches.append({"type": "causal", "goal": "why each step matters"})
+
         elif intent_state == "planning":
             branches.append({"type": "declarative", "goal": "objective definition"})
             branches.append({"type": "causal", "goal": "strategic dependencies"})
 
-        elif intent_state == "analysis":
+        elif intent_state in {"analysis", "philosophical", "conceptual"}:
             branches.append({"type": "comparative", "goal": "multi-angle evaluation"})
             branches.append({"type": "causal", "goal": "root cause identification"})
 
-        elif intent_state == "information":
+        elif intent_state in {"information", "factual"}:
             branches.append({"type": "declarative", "goal": "exact answer"})
             branches.append({"type": "exploratory", "goal": "related context"})
 
@@ -2829,14 +2838,45 @@ class AbstractionModulator:
 
 #..........Phase 2.6 : QUERY PRIORITY & BUDGET ALLOCATION ..........
 class QueryBudgetAllocator:
-    def allocate(self, queries, cognitive_profile):
-        budget = cognitive_profile.get("max_docs", 6)
-        # Blueprint: "intent importance" — causal/hypothetical pehle, general baad mein
-        priority_keywords = ["why", "how", "deep", "investigate", "principle", "vedic", "ancient"]
+    # Branch type se semantic priority — highest reasoning demand pehle
+    BRANCH_PRIORITY = {
+        "causal":       5,   # "why/how" — deepest reasoning required
+        "hypothetical": 4,   # invention/design — creative reasoning
+        "comparative":  3,   # multi-source synthesis
+        "exploratory":  2,   # broad landscape
+        "procedural":   2,   # step-by-step execution
+        "declarative":  1,   # simple fact — lowest cognitive demand
+    }
 
-        def priority_score(q):
+    def allocate(self, queries: list, cognitive_profile: dict) -> list:
+        """
+        Blueprint: 'intent importance + cognitive budget'
+        Priority = branch type (semantic signal from Ph 2.1)
+        Budget  = cognitive_profile.max_docs (billing se aata hai)
+        """
+        budget = cognitive_profile.get("max_docs", 6)
+
+        def priority_score(q: str) -> int:
             q_lower = q.lower()
-            return sum(1 for kw in priority_keywords if kw in q_lower)
+            # Branch type signal — Ph 2.1 QueryShapeGenerator ne inject kiya
+            for branch_type, weight in self.BRANCH_PRIORITY.items():
+                # Shape generator ne exact patterns inject kiye hain
+                if branch_type == "causal" and "why and how does" in q_lower:
+                    return weight
+                if branch_type == "hypothetical" and "if we were to" in q_lower:
+                    return weight
+                if branch_type == "comparative" and "compare" in q_lower:
+                    return weight
+                if branch_type == "exploratory" and "explore:" in q_lower:
+                    return weight
+                if branch_type == "procedural" and "step-by-step:" in q_lower:
+                    return weight
+                if branch_type == "declarative" and "what exactly is:" in q_lower:
+                    return weight
+            # Deep investigation marker — Ph 2.5 Memory Pruner ne inject kiya
+            if "deep investigation required" in q_lower:
+                return 5
+            return 1  # default
 
         prioritized = sorted(queries, key=priority_score, reverse=True)
         return prioritized[:budget]
@@ -2919,6 +2959,15 @@ class AdaptiveQueryExpansionEngine:
                 queries = expanded
 
         logging.info(f"[Query Complexity: {complexity}] Final query count: {len(queries) if isinstance(queries, list) else 'dict'}")
+        #-------------------------------
+        # Ph 2.8 Trace — billing flag se control
+        if cognitive_profile.get("trace_logging", False):
+            logging.info(f"[TRACE Ph2.1-branches] {branches}")
+            logging.info(f"[TRACE Ph2.2-granularity] {granularity}")
+            logging.info(f"[TRACE Ph2.3-shape] first_query={queries[0] if queries else 'empty'}")
+            logging.info(f"[TRACE Ph2.4-abstraction] granularity={granularity}")
+            logging.info(f"[TRACE Ph2.6-budget] max_docs={cognitive_profile.get('max_docs', 6)}")
+            logging.info(f"[TRACE Ph2.7-final_count] {len(queries)}")
         return queries
 #===========================================================
 #==========LAYER 5 : REASONING & SYNTHESIS =================
@@ -3265,11 +3314,11 @@ async def main(
     logging.info(f"[Cognitive Route] → {cognitive_route}")
     #-------------------------------------------------------------
     world_state = {
-    "domain": None,
-    "human_factor": False,
-    "ethical_weight": "low"
+        "domain": layer1_bundle.get("domains", ["general"])[0],
+        "human_factor": "ethics" in layer1_bundle.get("domains", []),
+        "ethical_weight": "high" if layer1_bundle.get("intent_type") in ["ethical", "philosophical"] else "low"
     }
-
+   
     #--------------------------------------------------------------
     # ================================
     # LAYER 2B — COGNITIVE LOAD CONTROLLER
@@ -3358,9 +3407,8 @@ async def main(
     
     query_count = sum(len(v) for v in adaptive_queries.values()) if isinstance(adaptive_queries, dict) else len(adaptive_queries)
     
-    if query_count > 6 and not cognitive_profile.get("deep_reasoning"):
-        cognitive_profile["deep_reasoning"] = True
-        cognitive_profile["query_complexity"] = "high"
+    if query_count > 6:
+        logging.info(f"[Layer2] query_count={query_count}, depth governed by billing tier")
 
 
     # if query_count > 6:
