@@ -44,7 +44,13 @@ class BillingLayer:
         # ========== TIER 6: JARVIS (FOUNDER) ==========  
         if tier == "jarvis":  
             return {  
-                "tier": "jarvis", 
+                "tier": "jarvis",
+
+                "max_goals": 100,    # jarvis 
+                "max_query_expansion": 100,  # jarvis
+                "max_depth": "ultra_deep",
+                "max_nlp_power": 100,
+
 
                 "response_strategy_mode": "jarvis",
                 "capability_level": "jarvis",
@@ -92,6 +98,11 @@ class BillingLayer:
             return {  
                 "tier": "enterprise", 
 
+                "max_goals": 15,     # enterprise
+                "max_query_expansion": 8,    # enterprise
+                "max_depth": "very_deep",
+                "max_nlp_power": 60,
+
                 "response_strategy_mode": "expert",
                 "capability_level": "expert",
                 "cognitive_load_level": "expert",
@@ -134,7 +145,12 @@ class BillingLayer:
         # ========== TIER 4: BUSINESS SMALL (SMALL COMPANIES) ==========  
         elif tier == "business_small":  
             return {  
-                "tier": "business_small",  
+                "tier": "business_small", 
+
+                "max_goals": 10,     # business 
+                "max_query_expansion": 5,    # business
+                "max_depth": "deep",
+                "max_nlp_power": 35,
 
                 "response_strategy_mode": "professional",
                 "capability_level": "professional",
@@ -178,6 +194,11 @@ class BillingLayer:
         elif tier == "ultra_paid":  
             return {  
                 "tier": "ultra_paid",
+
+                "max_goals": 6,      # ultra_paid
+                "max_query_expansion": 3,    # ultra_paid
+                "max_depth": "moderate",
+                "max_nlp_power": 20,
   
                 "response_strategy_mode": "advanced",
                 "capability_level": "advanced",
@@ -221,7 +242,12 @@ class BillingLayer:
         # ========== TIER 2: PAID (INDIVIDUAL) ==========  
         elif tier == "paid":  
             return {  
-                "tier": "paid", 
+                "tier": "paid",
+
+                "max_goals": 4,      # paid 
+                "max_query_expansion": 2,    # paid
+                "max_depth": "normal",
+                "max_nlp_power": 10,
  
                 "response_strategy_mode": "standard",
                 "capability_level": "standard",
@@ -267,6 +293,11 @@ class BillingLayer:
         else:  # free  
             return {  
                 "tier": "free",
+
+                "max_goals": 2,      # free
+                "max_query_expansion": 1,    # free
+                "max_depth": "shallow",
+                "max_nlp_power": 5,
 
                 "response_strategy_mode": "basic",#2-----------------------------
                 "capability_level": "base", #3-------------------

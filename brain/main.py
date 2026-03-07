@@ -17,7 +17,8 @@ from memory.ingestion import (
     PUBLIC_COLLECTION,
     JARVIS_COLLECTION
 )
-
+import ftfy
+from langdetect import detect as lang_detect
 
 import re
 import numpy as np
@@ -59,8 +60,11 @@ class MemoryGraphAdapter:
         self.concept_graph = {}
 
     def _extract_concepts(self, text: str):
-        words = text.lower().split()
-        return [w for w in words if len(w) > 6]
+        # spaCy NER + noun chunks — real linguistic concepts, not word length hack
+        doc = _NLP(text)
+        concepts = [ent.text.lower() for ent in doc.ents]
+        concepts += [chunk.text.lower() for chunk in doc.noun_chunks]
+        return list(set(c for c in concepts if c.strip()))    
 
     def _update_graph(self, docs):
         for doc in docs:
@@ -450,6 +454,8 @@ class ResponseStrategyEngine:
                 })
         
         # ===== JARVIS MODE (founder only — maximum power) =====
+        # Blueprint: "Jarvis ko full agency milta hai - wo khud decide karega kaisa respond karna hai"
+        # Hardcoded labels HATAO - AI khud smjhega training ke baad
         elif strategy_mode == "jarvis":
             if route == "retrieval":
                 strategy.update({
@@ -469,49 +475,10 @@ class ResponseStrategyEngine:
                     "structure": "connected",
                     "verbosity": "high"
                 })
-            if intent_value == "research":
-                strategy.update({
-                    "style": "deep-analytical",
-                    "structure": "vedic-scientific-report",
-                    "verbosity": "maximum",
-                    "multi_perspective": True,
-                    "cross_domain": True
-                })
-            elif intent_value == "execution":
-                strategy.update({
-                    "style": "instructional",
-                    "structure": "detailed-steps",
-                    "verbosity": "maximum",
-                    "include_verification": True
-                })
-            elif intent_value == "conversation":
-                strategy.update({
-                    "style": "deep-casual",
-                    "structure": "free",
-                    "verbosity": "high"
-                })
-            elif intent_value == "planning":
-                strategy.update({
-                    "style": "strategic-vedic",
-                    "structure": "multi-layer-plan",
-                    "verbosity": "maximum",
-                    "cross_domain": True
-                })
-            elif intent_value == "analysis":
-                strategy.update({
-                    "style": "critical-vedic",
-                    "structure": "comparative-deep",
-                    "verbosity": "maximum",
-                    "multi_perspective": True
-                })
-            elif intent_value == "invention":
-                strategy.update({
-                    "style": "creative-technical",
-                    "structure": "innovation-report",
-                    "verbosity": "maximum",
-                    "cross_domain": True,
-                    "include_verification": True
-                })
+            # Intent-based dynamic response - no hardcoded labels
+            # AI will learn from training how to respond to each intent type
+            # vedic-scientific-report, innovation-report, strategic-vedic REMOVED
+            # AI khud decide karega kaisa respond karna hai
 
         return strategy
 
@@ -1087,6 +1054,8 @@ class CognitiveLoadController:
             }
 
         # ===== MAXIMUM (jarvis) — full cognitive power =====
+        # Blueprint: "Jarvis ko unlimited power milta hai"
+        # Hardcoded labels HATAO - AI khud smjhega training ke baad
         elif cognitive_load_level == "maximum":
             profile = {
                 "use_chain": True,
@@ -1098,9 +1067,9 @@ class CognitiveLoadController:
                 "assumption_checking": True,
                 "multi_doc_synthesis": True,
                 "contradiction_resolution": True,
-                "vedic_cross_reference": True,
-                "ancient_modern_blend": True,
-                "invention_mode": False  # intent se trigger hoga
+                # vedic_cross_reference, ancient_modern_blend, invention_mode
+                # Yeh sab AI khud seekhega training ke baad
+                # Abhi sirf base capabilities enable karo
             }
 
         else:
@@ -2316,62 +2285,6 @@ class IntentDecompositionEngine:
         ),
     }
 
-    # ─────────────────────────────────────────────────────
-    # DOMAIN PROTOTYPES — Blueprint Phase 1.6:
-    # "Scriptures, Science, Ethics, Philosophy, Technology"
-    # Semantic definitions, not keyword lists
-    # ─────────────────────────────────────────────────────
-    _DOMAIN_PROTOTYPES = {
-        "scriptural": (
-            "Vedas, Upanishads, Bhagavad Gita, Ramayana, Mahabharata, "
-            "Puranas, Hindu scriptures, Sanskrit texts, Vedic knowledge, "
-            "Viman Shastra, Arthashastra, Sushruta Samhita, temple wisdom, "
-            "mantra, yantra, ancient Bharatiya knowledge."
-        ),
-        "scientific": (
-            "Physics, chemistry, biology, mathematics, quantum mechanics, "
-            "energy systems, electromagnetic, acoustic resonance, "
-            "scientific laws, experiments, natural phenomena."
-        ),
-        "technology": (
-            "Engineering, machines, devices, propulsion systems, alloys, "
-            "materials science, aircraft design, prototype construction, "
-            "artificial intelligence, software, hardware, innovation."
-        ),
-        "ethics": (
-            "Moral principles, dharma, right and wrong, duty, karma, "
-            "justice, truth, ethical decisions, values, responsibility."
-        ),
-        "philosophy": (
-            "Consciousness, soul, atma, brahman, existence, reality, "
-            "Advaita Vedanta, Samkhya, yoga philosophy, enlightenment, "
-            "metaphysics, ontology, meaning of life."
-        ),
-        "history": (
-            "Ancient civilizations, historical events, cultural heritage, "
-            "Bharatiya tradition, ancient kingdoms, warriors, historical figures."
-        ),
-        "statecraft": (
-            "Governance, politics, Arthashastra, Chanakya, leadership, "
-            "policy, administration, power, diplomacy, state management."
-        ),
-        "ayurveda": (
-            "Ayurvedic medicine, herbs, natural healing, body constitution, "
-            "Charaka, Sushruta, traditional Indian medicine, wellness."
-        ),
-    }
-
-    def __init__(self):
-        # Pre-compute ALL prototype embeddings once at startup
-        # Blueprint: "concept-based" — ye fixed concept centers hain
-        self._intent_embs = {
-            k: _EMBEDDER.encode(v)
-            for k, v in self._INTENT_PROTOTYPES.items()
-        }
-        self._domain_embs = {
-            k: _EMBEDDER.encode(v)
-            for k, v in self._DOMAIN_PROTOTYPES.items()
-        }
 
     # ─────────────────────────────────────────────────────
     def process(self, user_query: str, state: dict,
@@ -2389,129 +2302,130 @@ class IntentDecompositionEngine:
 
         # ════════════════════════════════════
         # PHASE 1.1 — Linguistic Normalization
-        # Blueprint: "normalize, noise hatao, grammar perfect karo"
+        # Blueprint: "User ki language broken ho sakti hai, emotional ho sakti
+        #             hai, shorthand ho sakti hai. normalize, noise hatao,
+        #             grammar perfect karne ki koshish karo"
         #
-        # spaCy: sentence boundaries, entity spans, POS structure
-        # Embedder: multilingual — 50+ languages same embedding space
-        # Hindi "kya hai ye" aur English "what is this" —
-        # same region in embedding space. No translation needed.
+        # Har tier ke liye same — normalization common zaroori kaam hai.
+        # Tier separation nahi — Brain: No subscription awareness.
         # ════════════════════════════════════
-        doc = _NLP(raw_query)   # spaCy linguistic parse
 
-        # Surface clean — only whitespace/punctuation
-        # No word substitution, no dictionary, no translation
-        normalized_query = re.sub(r'\s+', ' ', raw_query.strip())
+        # ── Step 1: Noise Removal ─────────────────────────────────────────
+        # Blueprint: "noise hatao"
+        # ftfy — Unicode corruption, broken encoding, mojibake sab fix karta hai
+        # Production grade — Wikipedia, CommonCrawl jaise large corpora use karte hain
+        cleaned = ftfy.fix_text(raw_query)
+        cleaned = re.sub(r'\s+', ' ', cleaned.strip())
 
-        # Semantic embedding — captures meaning across ALL languages
+        # ── Step 2: Language Detection ────────────────────────────────────
+        # 55+ languages — Europe, Asia, Middle East, South Asia sab covered
+        # Grammar fix ke liye LLM ko language batana zaroori hai
+        try:
+            detected_lang = lang_detect(cleaned)
+        except Exception:
+            detected_lang = "en"
+        logging.info(f"[Layer1 Ph1.1] detected_lang={detected_lang} | cleaned='{cleaned[:60]}'")
+
+        # ── Step 3: Grammar Normalization ────────────────────────────────
+        # Blueprint: "grammar perfect karne ki koshish karo"
+        # Koi library 55+ languages mein grammar fix nahi kar sakti
+        # LLM ek baar call — sirf normalize, koi reasoning nahi
+        try:
+            normalized_query = llm_generate(
+                f"You are a multilingual text normalizer.\n"
+                f"Fix grammar, spelling, and shorthand of this query.\n"
+                f"Keep meaning exactly same. Do not add or remove information.\n"
+                f"Detected language: {detected_lang}\n"
+                f"Return ONLY the fixed query — no explanation, no extra text.\n\n"
+                f"Query: {cleaned}"
+            ).strip()
+            if not normalized_query:
+                normalized_query = cleaned
+        except Exception:
+            normalized_query = cleaned
+
+        # ── Step 4: spaCy parse on NORMALIZED query ───────────────────────
+        # Pehle normalize, phir parse — raw par nahi
+        doc = _NLP(normalized_query)
         query_emb = _EMBEDDER.encode(normalized_query)
 
-        # spaCy se linguistic signals extract karo
-        # Grok ka achha idea — entities aur POS use karo
-        entities   = [(ent.text, ent.label_) for ent in doc.ents]
-        # pos_tags   = [(t.text, t.pos_) for t in doc if not t.is_space]
-        noun_chunks = [chunk.text for chunk in doc.noun_chunks]
+        # ── Step 5: Linguistic signals ────────────────────────────────────
+        # max_nlp_power billing.py se — brain reads, never decides
+        max_nlp_power = config.get("max_nlp_power", 1)
+        entities = [(ent.text, ent.label_) for ent in doc.ents][:max_nlp_power]
+        noun_chunks = [chunk.text for chunk in doc.noun_chunks][:max_nlp_power]
         has_question_structure = any(
             t.dep_ in ("nsubj", "attr", "dobj") for t in doc
         )
 
         logging.info(
-            f"[Layer1 Ph1.1] entities={entities} | "
-            f"nouns={noun_chunks[:3]} | question={has_question_structure}"
+            f"[Layer1 Ph1.1] original='{raw_query[:60]}' | "
+            f"normalized='{normalized_query[:60]}' | "
+            f"lang={detected_lang} | "
+            f"entities={entities} | nouns={noun_chunks[:3]}"
         )
+
 
         # ════════════════════════════════════
         # PHASE 1.2 — Intent Type Detection
-        # Blueprint: "Thinking style — Factual/Conceptual/Mixed etc."
-        # Blueprint: "intent concept-based hoga, keyword-based nahi"
-        #
-        # Embeddings: query ka meaning → intent prototype ke paas
-        # spaCy NER: entities se additional signal
+        # Blueprint: "ye routing nahi hai, thinking style hai"
+        # Blueprint: "Bina Memory Graph ke Intent sirf text hoga, Meaning nahi"
+        # No keywords | No anchors | Pure semantic + structural
         # ════════════════════════════════════
-        intent_scores = {
-            intent: _cosine(query_emb, proto_emb)
-            for intent, proto_emb in self._intent_embs.items()
-        }
+        intent_type   = "mixed"
+        thinking_type = "mixed"
+        
+        # ── Primary: Memory Graph semantic activation ─────────────────
+        if memory_graph is not None:
+            try:
+                activated = memory_graph.get_similar_concepts(
+                    query_emb.tolist(), top_k=3
+                )
+                if activated and activated[0].get("score", 0) > 0.6:
+                    intent_type = activated[0].get("metadata", {}).get("intent_hint", "conceptual")
+                    logging.info(f"[Layer1 Ph1.2] Graph activated: {intent_type}")
+            except Exception as e:
+                logging.error(f"[Layer1 Ph1.2] Graph error: {e}")
+        
+        # ── Fallback: spaCy structural signals (language agnostic) ────
+        # dep_ aur pos_ universal hain — French, Hindi, Arabic sab mein same
+        # Koi length check nahi — structure decide karta hai, size nahi
+        if intent_type == "mixed":
+            is_analytical = any(t.dep_ in ("advcl", "ccomp", "expl") for t in doc)
 
-        sorted_intents = sorted(
-            intent_scores.items(), key=lambda x: x[1], reverse=True
-        )
-        top_intent,  top_score  = sorted_intents[0]
-        sec_intent,  sec_score  = sorted_intents[1]
+            if is_analytical:
+                intent_type = "conceptual"
+            elif any(t.pos_ == "VERB" for t in doc):
+                intent_type = "procedural"
+            else:
+                intent_type = "factual"
 
-        # spaCy NER signal — Grok ka insight, embedding se combine
-        # PERSON entity + low philosophical score → factual boost
-        has_person_entity  = any(l in ("PERSON","PER")  for _, l in entities)
-        has_org_entity     = any(l in ("ORG","GPE","LOC") for _, l in entities)
-
-        if has_person_entity and top_intent != "factual":
-            intent_scores["factual"] = max(
-                intent_scores["factual"], top_score * 0.85
-            )
-            sorted_intents = sorted(
-                intent_scores.items(), key=lambda x: x[1], reverse=True
-            )
-            top_intent, top_score = sorted_intents[0]
-            sec_intent, sec_score = sorted_intents[1]
-
-        # ORG/GPE/LOC entity → research ya factual boost
-        # Blueprint: "entity-aware thinking style"
-        if has_org_entity:
-            intent_scores["research"] = max(intent_scores["research"], top_score * 0.75)
-            intent_scores["factual"]  = max(intent_scores["factual"],  top_score * 0.70)
-            sorted_intents = sorted(
-                intent_scores.items(), key=lambda x: x[1], reverse=True
-            )
-            top_intent, top_score = sorted_intents[0]
-            sec_intent, sec_score = sorted_intents[1]    
-
-        # Mixed threshold — dono intents close hain
-        MIXED_GAP = 0.07
-        if (top_score - sec_score) < MIXED_GAP and sec_score > 0.28:
-            intent_type   = "mixed"
-            thinking_type = "mixed"
-        else:
-            intent_type   = top_intent
-            thinking_type = top_intent
-
+        thinking_type = intent_type
         logging.info(
-            f"[Layer1 Ph1.2] {top_intent}({top_score:.3f}) vs "
-            f"{sec_intent}({sec_score:.3f}) → {intent_type}"
+            f"[Layer1 Ph1.2] intent={intent_type} | thinking={thinking_type}"
         )
+
 
         # ════════════════════════════════════
         # PHASE 1.3 — Goal Decomposition (HEART of Layer 1)
-        # Blueprint: "ChatGPT ek question ko multiple invisible
-        #              goals mein break karta hai"
-        # Blueprint: "Bina Memory Graph ke Intent sirf text hoga"
+        # Blueprint: "ChatGPT ek question ko multiple invisible goals mein break karta hai"
+        # Blueprint: "Brain: No subscription awareness — sirf config se power milti hai"
+        # Blueprint: "Bina Memory Graph ke Intent sirf text hoga, Meaning nahi"
         #
-        # Memory Graph: concept activation → hidden goals
-        # spaCy: noun chunks → explicit sub-topics
+        # Primary: Memory Graph — concepts as goals (semantic, no labels)
+        # Fallback: spaCy noun chunks — explicit sub-topics from query structure
+        # No hardcoded goal strings | No tier names in brain
         # ════════════════════════════════════
-        sub_goals = []
-        # Billing flags — Layer 1 inhe respect karta hai
-        # Blueprint: "Billing ka kaam: base power inject karna"
-        deep_reasoning   = config.get("deep_reasoning",        False)
-        use_emergent     = config.get("use_emergent_concepts",  False)
-        query_complexity = config.get("query_complexity",       "low")
-        
 
-        #-------------------------------------------
-        # Blueprint: "har tier ke badhte hue order mein power increase"
-        # Individual tiers (1-3): Gradual learning curve
-        # Business tiers (4-5): Company needs - research/analysis focus
-        # Jarvis (6): Unlimited - invention/ancient tech decode
-        _complexity_to_max_goals = {
-            "low":       2,   # Tier 1: Free - curious individual, basic exploration
-            "normal":    4,   # Tier 2: Paid - serious learner, deeper questions
-            "high":      6,   # Tier 3: Ultra Paid - professional individual, complex analysis
-            "very_high": 8,   # Tier 4: Business Small - team research, multi-goal projects
-            "expert":    10,  # Tier 5: Enterprise - org-level, comprehensive investigation
-            "maximum":   15,  # Tier 6: Jarvis - unlimited, ancient tech decode, invention
-        }
-        #----------------------------------------
-        max_goals = _complexity_to_max_goals.get(query_complexity, 2)
-        # Memory Graph — primary source (Blueprint aligned)
-        if memory_graph is not None and use_emergent:
+        # max_goals billing.py se config mein inject hota hai — brain reads, never decides
+        max_goals = config.get("max_goals", 2)
+
+        sub_goals = []
+
+        # ── Primary: Memory Graph — hidden goals nikaalo ─────────────────
+        # Blueprint: "multiple invisible goals" — graph se emerge hote hain
+        # Phase 6 training ke baad ye powerful hoga
+        if memory_graph is not None:
             try:
                 activated = memory_graph.get_similar_concepts(
                     query_emb.tolist(), top_k=max_goals
@@ -2523,196 +2437,157 @@ class IntentDecompositionEngine:
             except Exception as e:
                 logging.warning(f"[Layer1 Ph1.3] Memory graph error: {e}")
 
-        # spaCy noun chunks — Grok ka insight
-        # Har noun chunk ek potential sub-goal hai
-        if noun_chunks and len(sub_goals) < max_goals:
-            for chunk in noun_chunks[:max_goals]:
-                goal_candidate = f"investigate_{chunk.replace(' ', '_').lower()}"
-                if goal_candidate not in sub_goals:
-                    sub_goals.append(goal_candidate)
+        # ── Fallback: spaCy noun chunks ───────────────────────────────────
+        # Har noun chunk query ka ek sub-topic hai — language agnostic
+        # Ye actual query se nikle hain — hardcoded nahi
+        if len(sub_goals) < max_goals and noun_chunks:
+            for chunk in noun_chunks:
+                if chunk not in sub_goals:
+                    sub_goals.append(chunk)
+                if len(sub_goals) >= max_goals:
+                    break
 
-        # Intent-based semantic fallback (memory graph empty hone par)
-        if len(sub_goals) < 2:
-            _semantic_goals = {
-                "factual":       ["retrieve_exact_information",
-                                  "verify_accuracy", "find_source"],
-                "conceptual":    ["understand_core_concept",
-                                  "find_related_concepts",
-                                  "build_mental_model"],
-                "procedural":    ["identify_steps", "find_dependencies",
-                                  "validate_sequence"],
-                "research":      ["deep_investigation",
-                                  "multi_source_synthesis",
-                                  "compare_perspectives", "find_evidence"],
-                "invention":     ["decode_ancient_design",
-                                  "map_to_modern_science",
-                                  "propose_reconstruction",
-                                  "design_experiment"],
-                "planning":      ["define_objective", "strategic_analysis",
-                                  "multi_step_plan", "risk_assessment"],
-                "ethical":       ["ethical_evaluation", "dharma_check",
-                                  "identify_consequences"],
-                "philosophical": ["find_deeper_meaning",
-                                  "vedic_wisdom_connect", "modern_parallel"],
-                "conversation":  ["understand_context", "engage_naturally"],
-                "mixed":         ["multi_angle_analysis",
-                                  "identify_primary_intent",
-                                  "synthesize_answer"],
-            }
-            sub_goals = _semantic_goals.get(
-                intent_type, ["understand_user_intent"]
-            )
-        # Billing cap — free max 2 goals, Jarvis max 8
+        # ── Final cap ────────────────────────────────────────────────────
         sub_goals = sub_goals[:max_goals]
+
+        logging.info(
+            f"[Layer1 Ph1.3] sub_goals={sub_goals} | max_goals={max_goals}"
+        )
         # ════════════════════════════════════
         # PHASE 1.4 — Query Expansion
         # Blueprint: "ChatGPT internally expanded semantic query banata hai"
+        # Blueprint: "Brain: No subscription awareness — config se power milti hai"
         #
-        # spaCy entities — Grok ka insight (entities = important concepts)
-        # Memory graph neighbors — semantic expansion
+        # Primary: Memory Graph semantic neighbors — concept-driven expansion
+        # Secondary: spaCy entities — linguistic expansion
+        # No hardcoded templates | No tier names in brain | Language agnostic
         # ════════════════════════════════════
-        expanded_queries = [raw_query]
 
-        # spaCy entities se expand — Grok ka valid insight
-        if entities:
-            entity_texts = [e[0] for e in entities]
-            entity_variant = f"{raw_query} {' '.join(entity_texts[:3])}"
-            if entity_variant.strip() != raw_query.strip():
-                expanded_queries.append(entity_variant)
+        # max_expansion billing.py se config mein inject hota hai
+        max_expansion = config.get("max_query_expansion", 1)
 
-        # Memory graph semantic neighbors
-        if memory_graph is not None and use_emergent:
+        expanded_queries = [normalized_query]  # original normalized query
+        temp_expanded    = []
+
+        # ── Primary: Memory Graph neighbors — semantic expansion ──────────
+        # Blueprint: "ChatGPT internally expanded semantic query banata hai"
+        # Graph trained hoga Phase 6 ke baad — tab rich expansion milegi
+        # Abhi graph khali hai to spaCy fallback chalega — ye sahi behaviour hai
+        if memory_graph is not None:
             try:
                 neighbors = memory_graph.get_similar_concepts(
-                    query_emb.tolist(), top_k=3
+                    query_emb.tolist(), top_k=max_expansion
                 )
                 for n in neighbors:
                     concept = n.get("concept", "")
-                    if concept and concept.lower() not in raw_query.lower():
-                        expanded_queries.append(f"{raw_query} {concept}")
-            except Exception:
-                pass
+                    score   = n.get("score", 0)
+                    if concept and score > 0.3 and concept.lower() not in normalized_query.lower():
+                        temp_expanded.append(f"{normalized_query} {concept}")
+            except Exception as e:
+                logging.warning(f"[Layer1 Ph1.4] Graph expansion error: {e}")
 
-        # Intent-aware semantic variants (meaning-based, not template)
-        _semantic_variants = {
-            "research":      [f"{raw_query} evidence analysis perspectives"],
-            "invention":     [f"{raw_query} ancient scientific principle modern equivalent"],
-            "philosophical": [f"{raw_query} vedic wisdom deeper meaning"],
-            "planning":      [f"{raw_query} strategic approach step by step"],
-        }
-        for v in _semantic_variants.get(intent_type, []):
-            if v not in expanded_queries:
+        # ── Secondary: spaCy entities — linguistic expansion ─────────────
+        # Entities = query ke important concepts — language agnostic
+        if entities and len(temp_expanded) < max_expansion:
+            entity_texts   = [e[0] for e in entities[:3]]
+            entity_variant = f"{normalized_query} {' '.join(entity_texts)}"
+            if entity_variant.strip() != normalized_query.strip():
+                temp_expanded.append(entity_variant)
+
+        # ── Apply cap aur merge ───────────────────────────────────────────
+        for v in temp_expanded:
+            if v not in expanded_queries and len(expanded_queries) <= max_expansion:
                 expanded_queries.append(v)
+
+        logging.info(
+            f"[Layer1 Ph1.4] expanded={len(expanded_queries)} queries | "
+            f"max={max_expansion}"
+        )
 
         # ════════════════════════════════════
         # PHASE 1.5 — Reasoning Depth Estimation
         # Blueprint: "Short answer chalega ya heavy multi-layer reasoning?"
+        # Blueprint: "Brain: No subscription awareness — config se power milti hai"
         #
-        # Embedding confidence + spaCy complexity + goal count
-        # Grok ka idea (sentence length) + embedding confidence combine
+        # Pure objective signals — koi intent labels nahi, koi tier names nahi
+        # Memory Graph relevance + spaCy complexity + sub_goals count
         # ════════════════════════════════════
-        n_sentences     = len(list(doc.sents))
-        n_entities      = len(entities)
-        goal_count      = len(sub_goals)
-        top_confidence  = top_score
 
+        # ── Objective signals ─────────────────────────────────────────────
+        n_sentences = len(list(doc.sents))
+        n_entities  = len(entities)
+        goal_count  = len(sub_goals)
+
+        # Memory Graph relevance — Phase 6 ke baad strong signal dega
         graph_relevance = 0.0
         if memory_graph is not None:
             try:
-                graph_relevance = memory_graph.estimate_relevance(raw_query)
+                graph_relevance = memory_graph.estimate_relevance(normalized_query)
             except Exception:
                 pass
 
-        # Multi-signal depth decision
-        if intent_type in ["invention", "philosophical"] and goal_count >= 3:
+        # ── Depth decision — pure signals, koi tier naam nahi ────────────
+        # Sirf objective measures: graph strength, goals, entities, sentences
+        if graph_relevance > 0.8 or goal_count >= 5:
+            required_depth = "ultra_deep"
+        elif graph_relevance > 0.7 or goal_count >= 4:
             required_depth = "very_deep"
-        elif intent_type == "research" or goal_count >= 4:
+        elif goal_count >= 3 or n_entities >= 3:
             required_depth = "deep"
-        elif n_sentences >= 3 or n_entities >= 3:
-            # Grok ka sentence/entity insight — complex linguistic structure
-            required_depth = "deep"
-        elif intent_type in ["conceptual", "ethical"] or goal_count >= 2:
+        elif n_sentences >= 3 or goal_count >= 2:
+            required_depth = "moderate"
+        elif n_sentences >= 2:
             required_depth = "normal"
-        elif intent_type == "factual" and top_confidence > 0.65:
-            required_depth = "shallow"
-        elif graph_relevance > 0.7:
-            required_depth = "deep"
         else:
-            required_depth = "normal"
-        # if not deep_reasoning:
-        #     # PUBLIC tiers — max "normal", kabhi deep/very_deep nahi
-        #     if required_depth in ["deep", "very_deep"]:
-        #         required_depth = "normal"
-        # elif deep_reasoning and required_depth in ["normal", "shallow"]:
-        #     # deep_reasoning True = Jarvis/Enterprise — minimum deep
-        #     required_depth = "deep"
-        #----------------------------
-        # Blueprint: Tier-aware depth adjustment
-        # Free: Max shallow (fast answers only)
-        # Paid: Max normal (standard reasoning)
-        # Ultra/Business/Enterprise: Deep allowed
-        # Jarvis: Minimum deep (always heavy reasoning)
+            required_depth = "shallow"
 
-        tier_depth_caps = {
-            "free":          "shallow",      # Tier 1: Quick answers only
-            "paid":          "normal",       # Tier 2: Standard reasoning
-            "ultra_paid":    "deep",         # Tier 3: Complex analysis allowed
-            "business_small":"deep",         # Tier 4: Research-grade
-            "enterprise":    "very_deep",    # Tier 5: Org-level investigation
-            "jarvis":        "very_deep",    # Tier 6: Maximum depth always
-        }
+        # ── Tier cap — billing.py se inject hota hai, brain decide nahi karta
+        max_allowed_depth = config.get("max_depth", "shallow")
+        depth_levels = ["shallow", "normal", "moderate", "deep", "very_deep", "ultra_deep"]
+        max_idx           = depth_levels.index(max_allowed_depth)
+        current_idx       = depth_levels.index(required_depth)
 
-        tier = config.get("tier", "free")
-        max_allowed_depth = tier_depth_caps.get(tier, "shallow")
-
-        # Depth hierarchy: shallow < normal < deep < very_deep
-        depth_levels = ["shallow", "normal", "deep", "very_deep"]
-        max_depth_index = depth_levels.index(max_allowed_depth)
-        current_depth_index = depth_levels.index(required_depth)
-
-        # Cap depth based on tier
-        if current_depth_index > max_depth_index:
+        if current_idx > max_idx:
             required_depth = max_allowed_depth
-            logging.info(f"[Layer1 Ph1.5] Depth capped to '{required_depth}' for tier '{tier}'")
-
-        # Jarvis minimum depth enforcement
-        if tier == "jarvis" and required_depth in ["shallow", "normal"]:
-            required_depth = "deep"
-            logging.info(f"[Layer1 Ph1.5] Jarvis tier - minimum depth enforced: 'deep'")
-
-        #-----------------------------
+            current_idx    = max_idx
 
         logging.info(
             f"[Layer1 Ph1.5] depth={required_depth} | "
             f"sents={n_sentences} | ents={n_entities} | "
             f"goals={goal_count} | graph={graph_relevance:.2f}"
         )
-
-        # ════════════════════════════════════
+                # ════════════════════════════════════
         # PHASE 1.6 — Knowledge Domain Mapping
-        # Blueprint: "Scriptures, Science, Ethics, Philosophy, Technology"
+        # Blueprint: "Concepts likhe nahi jaate — nikal ke aate hain"
+        # Blueprint: "Brain: No subscription awareness — config se power milti hai"
         #
-        # Embeddings: pure semantic — no keyword lists
-        # spaCy entities: domain-relevant named entities detect karo
+        # Primary: Memory Graph — domains emerge hote hain Phase 6 training ke baad
+        # Fallback: spaCy entities — query se hi domain signal aata hai
+        # allow_ancient_tech billing.py se inject hota hai — brain decide nahi karta
         # ════════════════════════════════════
-        DOMAIN_THRESH = 0.35
 
-        domain_scores = {
-            d: _cosine(query_emb, proto_emb)
-            for d, proto_emb in self._domain_embs.items()
-        }
-        domains = [
-            d for d, score in domain_scores.items()
-            if score >= DOMAIN_THRESH
-        ]
-        domains = sorted(domains, key=lambda d: domain_scores[d], reverse=True)
+        domains = []
 
-        # Billing gate — config se (blueprint: "allow_ancient_tech Jarvis only")
-        if not allow_ancient:
-            domains = [
-                d for d in domains
-                if d not in ["scriptural", "ayurveda"]
-            ]
+        # ── Primary: Memory Graph se domain emergence ─────────────────────
+        # Blueprint: "Bina Memory Graph ke Intent sirf text hoga, Meaning nahi"
+        # Phase 6 training ke baad graph rich hoga — domains khud emerge honge
+        if memory_graph is not None:
+            try:
+                activated = memory_graph.get_similar_concepts(
+                    query_emb.tolist(), top_k=5
+                )
+                domains = [
+                    c["concept"] for c in activated
+                    if c.get("score", 0) > 0.35
+                ]
+            except Exception as e:
+                logging.warning(f"[Layer1 Ph1.6] Graph domain error: {e}")
+
+        # ── Fallback: spaCy entities ──────────────────────────────────────
+        # Query mein jo entities hain — wahi domain hint deti hain
+        # Language agnostic — kisi bhi language mein kaam karega
+        if not domains and entities:
+            domains = [ent[0] for ent in entities[:3]]
 
         if not domains:
             domains = ["general"]
@@ -2730,12 +2605,10 @@ class IntentDecompositionEngine:
             "query_embedding":   query_emb.tolist(),
             "intent_type":       intent_type,
             "thinking_type":     thinking_type,
-            "intent_scores":     intent_scores,
             "sub_goals":         sub_goals,
             "expanded_queries":  expanded_queries,
             "required_depth":    required_depth,
             "domains":           domains,
-            "domain_scores":     domain_scores,
             "reasoning_plan":    sub_goals[:3],
             # spaCy signals — Layer 2, 3 ke liye
             "entities":          entities,
@@ -2744,9 +2617,6 @@ class IntentDecompositionEngine:
             # Tier metadata — downstream layers ke liye
             "tier":              tier,
             "max_goals":         max_goals,
-            "deep_reasoning_enabled": deep_reasoning,
-            "emergent_concepts_enabled": use_emergent,
-            "query_complexity":  query_complexity,
         }
 
         state["layer1_intent_bundle"] = intent_bundle

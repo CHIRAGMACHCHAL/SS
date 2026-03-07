@@ -65,9 +65,9 @@ ChatGpt yhi se "smart" lgta hai. Isse AGI direct search nhi krega.
 -------------------------------- LAYER 2 . --- ADAPTIVE QUERY EXPANSION -------------------------------
 
 KAAM :- 1. har intent ke liye alag query
-                2. kabhi broad 
-                3. kabhi narrow 
-                4. kabhi abstract 
+        2. kabhi broad 
+        3. kabhi narrow 
+        4. kabhi abstract 
 
 ye layer decision-based hoti hai, static nhi
 
@@ -78,33 +78,33 @@ ye layer decision-based hoti hai, static nhi
 KAAM :- Decide krna ki Knowledge kha se laani hai
 
 Possible Sources - 1. Vector DB (PDFs, Scriptures)
-                                2. Memory Graph (Concepts) 
-                                3. Notes/Symbolic facts 
-                                4. Internal Reasoning (LLM only) 
+                   2. Memory Graph (Concepts) 
+                   3. Notes/Symbolic facts 
+                   4. Internal Reasoning (LLM only) 
  
 IF QUESTION : FACTUAL --------> VECTOR DB
 IF CONCEPTUAL ----------------> MEMORY GRAPH  (MEMORY GRAPH KO PHASE 6 SE CONNECT KRENGE)
 IF MIXED ---------------------> BOTH                 
 
 ChatGpt bhi yhin decide krta hai. - 1. retrieve kre ya nhi
-                                                             2. kitna kre 
-                                                             3. sirf vector db nhi hamesha 
+                                    2. kitna kre 
+                                    3. sirf vector db nhi hamesha 
 
  ------------------------ LAYER 4 . --- MEMORY GRAPH (UNDERSTANDING LAYER/ENGINE) ------------ 
 
                     	     YE MINI AGI KA BRAIN HAI
 
 Vector DB kya krta hai ? - 1. Search
-            		                         2. Similarity 
- 		                                     3. Text Chunks 
+            		       2. Similarity 
+ 		                   3. Text Chunks 
 
 Memory Graph kya krta hai ? - 1. Concept ------> Concept Relation
- 			                                          2. Hierarchy 
- 			                                          3. Meaning 
+ 			                  2. Hierarchy 
+ 			                  3. Meaning 
 
 BINA MEMORY GRAPH KE SIRF TEXT RECALL KR SKTE HO , SAMAJH NHI SKTE.
  
---------------------------- LAYER 5 . --- REASONING & SYNTHESIS --------------------------------------- 
+--------------------------- LAYER 5 . --- REASONING & SYNTHESIS -------------------------------------- 
 
 KAAM :- 1. Sab Sources ka fusion
                 2. Contradiction Handle 
@@ -132,7 +132,7 @@ Example - 1. Vector DB kuch bolta hai, Memory Graph kuch aur, Reasoning layer re
                              Knowledge Router
                                     |           | 
                                     |           |-------- Vector DB (PDFs) 
-                                    |====|-------- Memory Graph (Concepts)
+                                    |===========|-------- Memory Graph (Concepts)
                                     |           |-------- Symbolic Notes 
                                     |           |-------- LLM Internal Knowledge 
                                     |
@@ -207,25 +207,25 @@ Continuity :- Yaad + flow + identity
 
 
 Chatgpt :- (i)   Conversation reset ho jaati hai
-                  (ii)  memory shallow hai 
-                 (iii) long-term identity nhi 
+           (ii)  memory shallow hai 
+           (iii) long-term identity nhi 
 
 LEKIN HAMARA MINI AGI :- (i)   Vector DB
-                                                (ii)  Memory Graph 
-                                               (iii) Future me episodic + semantic memory 
+                         (ii)  Memory Graph 
+                         (iii) Future me episodic + semantic memory 
 
 intelligence without continuity = calculator
 intelligence with continuity    = Mind
 
 
-----------------------------Humne foundation banaya ,-----------------------------------------          
+----------------------------Humne foundation banaya ,----------------------------------------          
  -----------------------------FOUNDATION--------------------------------- 
                  Goal :-           System tootna nhi chahiye
                  Kya banaya :- (i)   PDFs ingestion,
-                                         (ii)  Chunking 
-                                        (iii) Fingerprinting (no reloaded loop) 
-                                        (iv)  Veector DB 
-                                        (v)   deterministic pipeline 
+                               (ii)  Chunking 
+                               (iii) Fingerprinting (no reloaded loop) 
+                               (iv)  Veector DB 
+                               (v)   deterministic pipeline 
 ye engineering spine hai,bina iske koi AGI NHI BANTA
 
 
@@ -234,11 +234,11 @@ ye engineering spine hai,bina iske koi AGI NHI BANTA
 
 GOAL- Memory ka concept smjhna
 KYA BANEGA - (i)   manually memory graph
-                          (ii)  power morality jaise concepts 
-                          (iii) question -----> memory activate ---------------> reteival guide 
+             (ii)  power morality jaise concepts 
+             (iii) question -----> memory activate ---------------> reteival guide 
 
 [NOTE]:-ye trainig wheels the ,taaki mujhe smjh me aaye.
-                         (iv)  memory retrieval ko kaise influence krti hai 
+             (iv)  memory retrieval ko kaise influence krti hai 
 
 [NOTE]:- final system me manual concepts nhi rahenge
 
@@ -249,40 +249,40 @@ KYA BANEGA - (i)   manually memory graph
 GOAL:- ChatGPT jaise IMPLICIT concept behavior
 
 YAHAAN KYA KRTA HAI :- (i)  koi "POWER" , "MORALITY" jaise concepts hardcore nhi
-                                            (ii) System khud embeddings se pattern dekhe ,cluster banaaye , topics emerge ho jaaye 
+                       (ii) System khud embeddings se pattern dekhe ,cluster banaaye , topics emerge ho jaaye 
 
 SIMPLE BOLU :- (i)  Concepts likhe nhi jaate
-                            (ii) Concepts nikal ke aate ho 
+               (ii) Concepts nikal ke aate ho 
  
 YE HOTA HAI :- (i)   Embedding similarity
-                          (ii)  Clustering 
-                          (iii) Usage frequency 
-                         (iv)  temporal co-occurrence 
+               (ii)  Clustering 
+               (iii) Usage frequency 
+               (iv)  temporal co-occurrence 
 
 YE CHATGPT STYLE BEHAVIOR KA 1ST REAL STEP HAI
 
 ----------------------------------- LAYER 4 KA Phase 3 - "WORLD MODEL BANAENGE" ------------- 
 GOAL - System ko duniya samjh aaye
 SYSTEM SEEKHE - (i)   Cause---> Effect
-                                (ii)  Ethics vs Survival 
-                               (iii) Long-term Consequences 
-                               (iv)  Belief System 
+                (ii)  Ethics vs Survival 
+                (iii) Long-term Consequences 
+                (iv)  Belief System 
 
 YHI :- SCRIPTURES, AYURVEDA, VIMAN SAHASTRA, SCEINCE, POLICTICS sab ek hi mental map me aate hai
        ChatGpt ke paas ye fragemented hai , tum yahaa deep coherence banaoge
 
  -------------------------------- LAYER 4 KA Phase 4 -  "SELF MODEL (META COGNITION)"--------------- 
 GOAL- SYSTEM JAANE ki :- (i)  Wo kya jaanta hai, kya nhi
-                                               (ii) use doubt kab krna chahiye 
+                         (ii) use doubt kab krna chahiye 
 ISKA RESULT :- (i)   hallucination kam
-                         (ii)  overconfidence kam 
-                        (iii) reasoning strong 
+               (ii)  overconfidence kam 
+               (iii) reasoning strong 
 
 [NOTE]:- CHATGPT YAHAAN WEAK HAI
 
 
 
------------------------------------- LAYER 4 KA Phase 5 - "AGENCY (Dangerous but Final)" ---------------
+------------------------------------ LAYER 4 KA Phase 5 - "AGENCY (Dangerous but Final)" -------------
 
 GOAL - System khud kaam kre:- 
        (i)   goals set kre
