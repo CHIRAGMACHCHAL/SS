@@ -2239,60 +2239,13 @@ class IntentDecompositionEngine:
 
     Zero LLM calls. Zero hardcoded keywords.
     """
-
-    # ─────────────────────────────────────────────────────
-    # INTENT PROTOTYPES — meaning definitions, not keywords
-    # Blueprint: "concept-based" — ye centers hain embedding
-    # space mein. Jo query in centers ke paas ho = woh intent.
-    # ─────────────────────────────────────────────────────
-    _INTENT_PROTOTYPES = {
-        "factual": (
-            "What is the exact fact, date, name, number, or definition? "
-            "I need a specific piece of verified information."
-        ),
-        "conceptual": (
-            "Explain this concept deeply. Help me understand "
-            "the theory, principle, or underlying idea."
-        ),
-        "procedural": (
-            "What are the steps? How do I do this? "
-            "Process, method, instructions to accomplish a task."
-        ),
-        "research": (
-            "Deep investigation needed. Multiple sources, comparison, "
-            "multi-layer analysis, synthesis across perspectives."
-        ),
-        "invention": (
-            "Design, create, or invent something new. "
-            "Build a new technology, reconstruct ancient design, "
-            "innovate using science."
-        ),
-        "planning": (
-            "Create a strategy, roadmap, or multi-step plan. "
-            "Goal-oriented approach, Chanakya-style strategy."
-        ),
-        "ethical": (
-            "What is right or wrong? Moral evaluation, dharma, "
-            "duty, karma, justice, ethical judgment."
-        ),
-        "philosophical": (
-            "Deeper meaning, truth, ancient wisdom, consciousness, "
-            "soul, existence, reality, vedic insight."
-        ),
-        "conversation": (
-            "Casual chat, general talk, no specific task needed, "
-            "simple greeting or discussion."
-        ),
-    }
-
-
     # ─────────────────────────────────────────────────────
     def process(self, user_query: str, state: dict,
                 config: dict = None, memory_graph=None) -> dict:
 
         config             = config or {}
-        tier               = config.get("tier", "free")
-        allow_ancient      = config.get("allow_ancient_tech", False)
+        
+        
 
         # ════════════════════════════════════
         # PHASE 1.0 — Raw Query Capture
@@ -2354,9 +2307,9 @@ class IntentDecompositionEngine:
         max_nlp_power = config.get("max_nlp_power", 1)
         entities = [(ent.text, ent.label_) for ent in doc.ents][:max_nlp_power]
         noun_chunks = [chunk.text for chunk in doc.noun_chunks][:max_nlp_power]
-        has_question_structure = any(
-            t.dep_ in ("nsubj", "attr", "dobj") for t in doc
-        )
+        
+        
+        
 
         logging.info(
             f"[Layer1 Ph1.1] original='{raw_query[:60]}' | "
@@ -2382,7 +2335,7 @@ class IntentDecompositionEngine:
                     query_emb.tolist(), top_k=3
                 )
                 if activated and activated[0].get("score", 0) > 0.6:
-                    intent_type = activated[0].get("metadata", {}).get("intent_hint", "conceptual")
+                    intent_type = activated[0].get("metadata", {}).get("intent_hint") or "mixed"
                     logging.info(f"[Layer1 Ph1.2] Graph activated: {intent_type}")
             except Exception as e:
                 logging.error(f"[Layer1 Ph1.2] Graph error: {e}")
@@ -2496,7 +2449,7 @@ class IntentDecompositionEngine:
 
         # ── Apply cap aur merge ───────────────────────────────────────────
         for v in temp_expanded:
-            if v not in expanded_queries and len(expanded_queries) <= max_expansion:
+            if v not in expanded_queries and len(expanded_queries) < max_expansion:
                 expanded_queries.append(v)
 
         logging.info(
@@ -2534,9 +2487,9 @@ class IntentDecompositionEngine:
             required_depth = "very_deep"
         elif goal_count >= 3 or n_entities >= 3:
             required_depth = "deep"
-        elif n_sentences >= 3 or goal_count >= 2:
+        elif goal_count >= 2 or n_entities >= 2:
             required_depth = "moderate"
-        elif n_sentences >= 2:
+        elif goal_count >= 1 or n_entities >= 1:
             required_depth = "normal"
         else:
             required_depth = "shallow"
@@ -2556,7 +2509,7 @@ class IntentDecompositionEngine:
             f"sents={n_sentences} | ents={n_entities} | "
             f"goals={goal_count} | graph={graph_relevance:.2f}"
         )
-                # ════════════════════════════════════
+        # ════════════════════════════════════
         # PHASE 1.6 — Knowledge Domain Mapping
         # Blueprint: "Concepts likhe nahi jaate — nikal ke aate hain"
         # Blueprint: "Brain: No subscription awareness — config se power milti hai"
@@ -2613,9 +2566,7 @@ class IntentDecompositionEngine:
             # spaCy signals — Layer 2, 3 ke liye
             "entities":          entities,
             "noun_chunks":       noun_chunks,
-            "n_sentences":       n_sentences,
-            # Tier metadata — downstream layers ke liye
-            "tier":              tier,
+            # billing config value — Layer 2 branching ke liye
             "max_goals":         max_goals,
         }
 
@@ -2632,261 +2583,374 @@ class MemoryAwarePruner:
         self.threshold = threshold
 
     def prune(self, queries: list[str], memory_graph) -> list[str]:
+        # memory_graph None ho to pruning skip — safe fallback
+        if memory_graph is None or not queries:
+            return queries
         pruned = []
         for q in queries:
-            score = memory_graph.estimate_relevance(q)
-            if score >= self.threshold:
+            try:
+                score = memory_graph.estimate_relevance(q)
+                if score >= self.threshold:
+                    pruned.append(q)
+            except Exception as e:
+                logging.warning(f"[Ph2.5-Pruner] memory error: {e}")
                 pruned.append(q)
-        return pruned
+        return pruned if pruned else queries
 
 #--------LAYER 2 KA PHASE 2.5 MEMORY AWARE QUERY PRUNING (LAYER 4 HOOK)
 class MemoryAwareQueryPruner:
-    def prune(self, queries, memory_graph, intent_state):
+    """
+    Blueprint: "MEMORY-AWARE QUERY PRUNING (LAYER 4 HOOK) —
+                Layer 4 se check hota hai:
+                (i) kya ye knowledge already store hai?
+                (ii) kya repeat query waste hoti?
+                RESULT: (i) drop (ii) merge (iii) deeper"
+
+    Drop   = score > 0.85 — strongly in memory, repeat waste hogi
+    Merge  = duplicate strings — seen set se deduplicate
+    Deeper = score low + required_depth deep — naya topic, rakhna zaroori
+    Koi string label nahi, koi hardcoded English nahi.
+    """
+
+    def prune(
+        self,
+        queries: list,
+        memory_graph,
+        layer1_bundle: dict
+    ) -> list:
         """
-        Remove redundant or low-value queries
-        based on:
-        - memory similarity
-        - intent criticality
+        queries       : Phase 2.4 ka output — plain string list
+        memory_graph  : Layer 4 hook
+        layer1_bundle : required_depth ke liye — billing config se aaya
+
+        Returns: pruned list — drop/merge/deeper decisions applied
         """
+        # memory_graph None ho to pruning skip — safe fallback
+        if memory_graph is None or not queries:
+            return queries
+
+        depth_levels = ["shallow", "normal", "moderate", "deep", "very_deep", "ultra_deep"]
+        required_depth = layer1_bundle.get("required_depth", "shallow")
+        depth_idx = depth_levels.index(required_depth) if required_depth in depth_levels else 0
+
         pruned = []
-        seen = set()
+        seen   = set()
 
         for q in queries:
+            # Merge — duplicate deduplicate
             key = q.lower().strip()
             if key in seen:
                 continue
             seen.add(key)
 
-            score = memory_graph.estimate_relevance(q)
-
-            # Blueprint: "kya ye knowledge already store hai? drop karo"
-            if score > 0.85:
-                # Already strongly in memory — skip, waste hogi
+            try:
+                score = memory_graph.estimate_relevance(q)
+            except Exception as e:
+                logging.warning(f"[Ph2.5] memory error: {e}")
+                pruned.append(q)
                 continue
 
-            # Blueprint: "kuch deeper" — low memory = naya topic = deeper explore karo
-            if score < 0.2 and intent_state in ["research", "invention"]:
-                pruned.append(q + " — deep investigation required")
-            else:
-                pruned.append(q)
+            # Drop — strongly in memory, repeat waste hogi
+            # Blueprint: "kya ye knowledge already store hai? drop karo"
+            if score > 0.85:
+                continue
 
-        return pruned if pruned else queries  # fallback: kuch to dena hai
+            # Deeper — score low + depth deep = naya topic, zaroori hai
+            # Blueprint: "kuch deeper — isse system over search nhi krta"
+            # Sirf rakhna hai — koi English string append nahi
+            pruned.append(q)
+
+        # Blueprint: fallback — kuch to dena hai Layer 3 ko
+        return pruned if pruned else queries
 
 #================================================
 #==========LAYER 2 : ADAPTIVE QUERY EXPANSION(DYNAMICS)==========
 #================================================
 # .......Phase 2.1 : INTENT-wise QUERY BRANCHING.........
 class IntentQueryBrancher:
-    def branch(self, intent_state, sub_goals):
+    """
+    Blueprint: "har intent ke liye alag query path banana — yhi se system smart lgta hai"
+    Blueprint: "decision-based, static nahi"
+    Blueprint: "Concepts nikal ke aate hain"
+
+    Layer 1 ne sub_goals (Memory Graph), entities (spaCy), noun_chunks nikale —
+    inhe base_query ke saath combine karke genuinely alag query paths banao.
+    Koi intent_state label nahi. Koi hardcoded English string nahi.
+    Language agnostic — embedding aur spaCy dono language se upar hain.
+    """
+
+    def branch(self, base_query: str, layer1_bundle: dict) -> list:
+        """
+        base_query    : Layer 1 ka normalized_query
+        layer1_bundle : Layer 1 ka poora output
+
+        Returns: list of actual query strings — genuinely alag angles
+        Ye strings directly Layer 3 mein search karengi
+        """
+        sub_goals      = layer1_bundle.get("sub_goals", [])
+        entities       = [e[0] for e in layer1_bundle.get("entities", [])]
+        noun_chunks    = layer1_bundle.get("noun_chunks", [])
+        required_depth = layer1_bundle.get("required_depth", "normal")
         branches = []
+        seen = set()
 
-        if intent_state == "research":
-            for goal in sub_goals:
-                branches.append({"type": "exploratory", "goal": goal})
+        def add(q: str):
+            key = q.lower().strip()
+            if key and key not in seen:
+                seen.add(key)
+                branches.append(q)
 
-        elif intent_state == "invention":
-            branches.append({"type": "hypothetical", "goal": "design possibilities"})
-            branches.append({"type": "comparative", "goal": "ancient vs modern equivalent"})
-            branches.append({"type": "causal", "goal": "underlying scientific principle"})
+        # Branch 1 — base query hamesha hoti hai
+        add(base_query)
 
-        elif intent_state == "execution":
-            branches.append({"type": "procedural", "goal": "step-by-step implementation"})
-            branches.append({"type": "causal", "goal": "why each step matters"})
+        # Branch 2 — sub_goals se: Memory Graph ne jo concepts nikale
+        # ye real semantic angles hain — language agnostic, Phase 6 ke baad rich honge
+        for goal in sub_goals:
+            if goal.lower() not in base_query.lower():
+                add(f"{base_query} {goal}")
 
-        elif intent_state == "planning":
-            branches.append({"type": "declarative", "goal": "objective definition"})
-            branches.append({"type": "causal", "goal": "strategic dependencies"})
+        # Branch 3 — entities se: named concepts pe focused query
+        # spaCy entities language agnostic hain — Hindi, French, Sanskrit sab
+        if entities:
+            add(f"{base_query} {' '.join(entities[:2])}")
 
-        elif intent_state in {"analysis", "philosophical", "conceptual"}:
-            branches.append({"type": "comparative", "goal": "multi-angle evaluation"})
-            branches.append({"type": "causal", "goal": "root cause identification"})
+        # Branch 4 — noun_chunks se: sub-topics pe alag angle
+        for chunk in noun_chunks[:2]:
+            if chunk.lower() not in base_query.lower():
+                add(f"{chunk} {base_query}")
 
-        elif intent_state in {"information", "factual"}:
-            branches.append({"type": "declarative", "goal": "exact answer"})
-            branches.append({"type": "exploratory", "goal": "related context"})
-
-        else:
-            branches.append({"type": "exploratory", "goal": "overview"})
+        # Branch 5 — depth signal se: deep required hai to
+        # entities se extra angle — language agnostic, kisi bhi language mein kaam karta hai
+        # required_depth billing config se aaya — brain decide nahi karta
+        if required_depth in ["deep", "very_deep", "ultra_deep"]:
+            for ent in entities[:2]:
+                if ent.lower() not in base_query.lower():
+                    add(f"{ent} {base_query}")    
 
         return branches
 #.............. Phase 2.2 : QUERY GRANULARITY DECISION ..........
 class QueryGranularityDecider:
-    def decide(self, intent_state, required_depth):
-        if required_depth in ["deep", "very_deep"] or intent_state in ["research", "invention"]:
-            return "fine"
-        elif intent_state in ["philosophical", "analysis"]:
-            return "abstract"
-        elif required_depth == "shallow" or intent_state == "information":
-            return "narrow"
-        return "normal"
+    """
+    Blueprint: "HAR INTENT KE LIYE DECIDE HOTA HAI —
+                Narrow: exact facts, Broad: Landscape, Abstract: Philosophy"
+    Narrow/Broad/Abstract — measure ke 3 ends hain, string labels nahi.
+    scope_score 0.0–1.0 — pure number — Phase 2.3 + 2.4 ye directly use karenge.
+    """
+
+    def decide(self, branches: list, layer1_bundle: dict, memory_graph) -> list:
+        depth_levels = ["shallow", "normal", "moderate", "deep", "very_deep", "ultra_deep"]
+        required_depth = layer1_bundle.get("required_depth", "shallow")
+        depth_idx = depth_levels.index(required_depth) if required_depth in depth_levels else 0
+        depth_score = depth_idx / (len(depth_levels) - 1)  # normalize 0.0–1.0
+
+        results = []
+        for branch in branches:
+            mem_score = 0.0
+            if memory_graph is not None:
+                try:
+                    mem_score = memory_graph.estimate_relevance(branch)
+                except Exception as e:
+                    logging.warning(f"[Ph2.2] memory error: {e}")
+
+            # depth 60% + memory 40% = scope_score
+            # depth = config controlled (billing), memory = knowledge driven (graph)
+            scope_score = round((depth_score * 0.6) + (mem_score * 0.4), 4)
+            results.append({"branch": branch, "scope_score": scope_score})
+
+        logging.info(f"[Ph2.2] scope_scores computed for {len(results)} branches")
+        return results
 
 #.................. Phase 2.3 : DYNAMIC QUERY SHAPE GENERATOR ..........
 class QueryShapeGenerator:
-    def generate(self, base_question, branch, granularity):
-        t = branch["type"]
-        goal = branch.get("goal", "")
+    """
+    Blueprint: "yahaan actually query forms bante hai —
+                Declaration, Exploratory, Hypothetical, Comparative, Causal.
+                ye phase random nhi hota, decision-based hota hai."
+    Decision = Phase 2.2 ka scope_score.
+    Forms = Memory Graph ke close concepts se emerge karte hain.
+    Koi hardcoded English nahi — language agnostic.
+    """
 
-        if t == "declarative":
-            return f"What exactly is: {base_question}"
-        if t == "exploratory":
-            return f"{base_question} — explore: {goal}"
-        if t == "hypothetical":
-            return f"If we were to {goal}, how would {base_question} work?"
-        if t == "comparative":
-            return f"Compare {goal} in context of: {base_question}"
-        if t == "causal":
-            return f"Why and how does {goal} relate to: {base_question}"
-        if t == "procedural":
-            return f"Step-by-step: {goal} for {base_question}"
+    def generate(self, branch_item: dict, query_embedding: list, memory_graph, cognitive_profile: dict = None) -> str:
+        branch      = branch_item["branch"]
+        scope_score = branch_item["scope_score"]
 
-        return base_question
+        if not (cognitive_profile or {}).get("use_emergent_concepts", False):
+            return branch
+        # scope_score < 0.2 — narrow query, already specific
+        # Memory Graph enrichment noise banega
+        if scope_score < 0.2 or memory_graph is None or not query_embedding:
+            return branch
+
+        try:
+            # scope_score se top_k decide — ye hai "decision-based"
+            # 0.2–0.5 → 1 concept, 0.5–0.8 → 2, >0.8 → 3
+            top_k = max(1, round(scope_score * 3))
+
+            # Close concepts — score > 0.5 — concrete/specific form
+            # Blueprint: "Declaration, Exploratory" = specific knowledge shape
+            similar = memory_graph.get_similar_concepts(query_embedding, top_k=top_k)
+            concepts = [
+                c["concept"] for c in similar
+                if c.get("score", 0) > 0.5
+                and c["concept"].lower() not in branch.lower()
+            ]
+            if concepts:
+                return f"{branch} {' '.join(concepts)}"
+        except Exception as e:
+            logging.warning(f"[Ph2.3] memory error: {e}")
+
+        return branch
+
+ 
 #...............Phase 2.4 : ABSTRACTION LEVEL MODULATOR ..........
 class AbstractionModulator:
-    def adjust(self, query, granularity):
-        if granularity == "fine":
-            # Concrete level — facts aur data
-            return query + " with specific data, measurements and verified facts"
-        if granularity == "abstract":
-            # Meta level — ethics, philosophy
-            return f"From a philosophical and ethical perspective: {query}"
-        if granularity == "narrow":
-            # Conceptual level — theory
-            return f"Core concept and theory behind: {query}"
+    """
+    Blueprint: "Same intent ko multiple abstract levels pr query krta hai —
+                Concrete (facts), Conceptual (models), Meta (ethics, philosophy)"
+    Phase 2.3 ne close concepts liye (concrete form).
+    Phase 2.4 door ke concepts leta hai — graph distance = abstraction level.
+    Blueprint ka "Meta — philosophy" graph mein door ke nodes se aata hai.
+    Koi hardcoded English nahi.
+    """
+
+    def adjust(self, query: str, scope_score: float, query_embedding: list, memory_graph, cognitive_profile: dict = None) -> str:
+        # Billing gate — FREE/PAID ke liye use_emergent_concepts False hai
+        if not (cognitive_profile or {}).get("use_emergent_concepts", False):
+            return query
+
+        # scope_score < 0.5 — concrete level sufficient
+        # Abstract layer add karna is query ke liye useful nahi
+        if scope_score < 0.5 or memory_graph is None or not query_embedding:
+            return query
+
+        try:
+            # Door ke concepts — score 0.15–0.4
+            # Ye similar nahi hain lekin graph mein connected hain
+            # Blueprint: "Conceptual, Meta" = ye distance naturally represent karta hai
+            similar = memory_graph.get_similar_concepts(query_embedding, top_k=6)
+            abstract_concepts = [
+                c["concept"] for c in similar
+                if 0.15 < c.get("score", 0) < 0.4
+                and c["concept"].lower() not in query.lower()
+            ]
+            if abstract_concepts:
+                return f"{query} {abstract_concepts[0]}"
+        except Exception as e:
+            logging.warning(f"[Ph2.4] memory error: {e}")
+
         return query
+
+
 
 
 #..........Phase 2.6 : QUERY PRIORITY & BUDGET ALLOCATION ..........
 class QueryBudgetAllocator:
-    # Branch type se semantic priority — highest reasoning demand pehle
-    BRANCH_PRIORITY = {
-        "causal":       5,   # "why/how" — deepest reasoning required
-        "hypothetical": 4,   # invention/design — creative reasoning
-        "comparative":  3,   # multi-source synthesis
-        "exploratory":  2,   # broad landscape
-        "procedural":   2,   # step-by-step execution
-        "declarative":  1,   # simple fact — lowest cognitive demand
-    }
+    """
+    Blueprint: "sab Question equal nhi hote —
+                Kaun Phle? Kaun Shallow? Kaun Deep?
+                Factors: intent importance, cognitive budget"
 
-    def allocate(self, queries: list, cognitive_profile: dict) -> list:
+    Priority = Memory Graph se measure — inverted relevance score
+    Reason: jo query Memory Graph mein kam known = naya topic = pehle explore karo
+            jo zyada known = already covered = baad mein ya drop
+    Budget  = cognitive_profile.max_docs — billing se aata hai
+    Koi string label nahi, koi hardcoded English nahi.
+    """
+
+    def allocate(
+        self,
+        queries: list,
+        cognitive_profile: dict,
+        memory_graph
+    ) -> list:
         """
-        Blueprint: 'intent importance + cognitive budget'
-        Priority = branch type (semantic signal from Ph 2.1)
-        Budget  = cognitive_profile.max_docs (billing se aata hai)
+        queries          : Phase 2.5 ka pruned output
+        cognitive_profile: billing se aaya — max_docs budget hai
+        memory_graph     : Layer 4 hook — priority measure ke liye
+
+        Returns: budget ke andar top-priority queries — sorted
         """
         budget = cognitive_profile.get("max_docs", 6)
 
-        def priority_score(q: str) -> int:
-            q_lower = q.lower()
-            # Branch type signal — Ph 2.1 QueryShapeGenerator ne inject kiya
-            for branch_type, weight in self.BRANCH_PRIORITY.items():
-                # Shape generator ne exact patterns inject kiye hain
-                if branch_type == "causal" and "why and how does" in q_lower:
-                    return weight
-                if branch_type == "hypothetical" and "if we were to" in q_lower:
-                    return weight
-                if branch_type == "comparative" and "compare" in q_lower:
-                    return weight
-                if branch_type == "exploratory" and "explore:" in q_lower:
-                    return weight
-                if branch_type == "procedural" and "step-by-step:" in q_lower:
-                    return weight
-                if branch_type == "declarative" and "what exactly is:" in q_lower:
-                    return weight
-            # Deep investigation marker — Ph 2.5 Memory Pruner ne inject kiya
-            if "deep investigation required" in q_lower:
-                return 5
-            return 1  # default
+        def priority_score(q: str) -> float:
+            # memory_graph na ho to sab equal priority
+            if memory_graph is None:
+                return 0.5
+            try:
+                mem_score = memory_graph.estimate_relevance(q)
+                # Invert karo — low memory = naya = high priority
+                # Blueprint: "Kaun Phle?" = unexplored pehle
+                return 1.0 - mem_score
+            except Exception as e:
+                logging.warning(f"[Ph2.6] memory error: {e}")
+                return 0.5
 
         prioritized = sorted(queries, key=priority_score, reverse=True)
+        logging.info(f"[Ph2.6] budget={budget}, total={len(queries)}, selected={min(budget, len(queries))}")
         return prioritized[:budget]
 #............Phase 2.7 : FINAL QUERY BUNDLE OUTPUT..........
 class AdaptiveQueryExpansionEngine:
+    """
+    Blueprint: "final clean output jo layer 3 ko milega —
+                ab layer 3 blind search nhi karta, wo intelligent routing karta hai"
+
+    Phase 2.7 = orchestrator — Phase 2.1 se 2.6 tak sab chalata hai.
+    Final output: clean list of strings — Layer 3 ko milega.
+    Koi extra cutting nahi — Phase 2.6 ne already budget enforce kar di.
+    Koi hardcoded English nahi.
+    """
+
     def run(
         self,
-        question,
-        layer1_bundle,
+        question: str,
+        layer1_bundle: dict,
         intent_state,
-        cognitive_profile,
+        cognitive_profile: dict,
         memory_graph
-    ):
-        brancher = IntentQueryBrancher()
+    ) -> list:
+        brancher          = IntentQueryBrancher()
         granularity_decider = QueryGranularityDecider()
-        shape_gen = QueryShapeGenerator()
-        abstraction = AbstractionModulator()
-        pruner = MemoryAwarePruner()
-        allocator = QueryBudgetAllocator()
+        shape_gen         = QueryShapeGenerator()
+        abstraction       = AbstractionModulator()
+        pruner            = MemoryAwarePruner()
+        allocator         = QueryBudgetAllocator()
 
+        # Phase 2.1 — branches
         branches = brancher.branch(
-            intent_state,
-            layer1_bundle.get("sub_goals", [])
+            layer1_bundle.get("normalized_query", question),
+            layer1_bundle
         )
 
-        granularity = granularity_decider.decide(
-            intent_state,
-            layer1_bundle.get("required_depth", "normal")
+        # Phase 2.2 — scope scores
+        query_scope_items = granularity_decider.decide(
+            branches, layer1_bundle, memory_graph
         )
 
+        # Phase 2.3 + 2.4 — shape + abstraction
+        query_emb = layer1_bundle.get("query_embedding")
         queries = []
-        for b in branches:
-            q = shape_gen.generate(question, b, granularity)
-            q = abstraction.adjust(q, granularity)
+        for item in query_scope_items:
+            q = shape_gen.generate(item, query_emb, memory_graph, cognitive_profile)
+            q = abstraction.adjust(q, item["scope_score"], query_emb, memory_graph, cognitive_profile)
             queries.append(q)
 
+        # Phase 2.5 — prune
         queries = pruner.prune(queries, memory_graph)
-        queries = allocator.allocate(queries, cognitive_profile)
-        
-        queries = MemoryAwareQueryPruner().prune(
-                    queries,
-                    memory_graph,
-                    intent_state
-                )
+        queries = MemoryAwareQueryPruner().prune(queries, memory_graph, layer1_bundle)
 
-        # query_complexity — billing se aata hai, retrieval depth decide karta hai
-        complexity = cognitive_profile.get("query_complexity", "normal")
+        # Phase 2.6 — priority + budget
+        queries = allocator.allocate(queries, cognitive_profile, memory_graph)
 
-        if complexity == "low":
-            # Free tier — sirf primary query, koi expansion nahi
-            queries = queries[:1] if isinstance(queries, list) else queries
-
-        elif complexity == "normal":
-            # Paid — basic expansion, max 3 queries
-            if isinstance(queries, list):
-                queries = queries[:3]
-
-        elif complexity == "high":
-            # Ultra/Business — full expansion, saare branches
-            pass  # sab queries use karo
-        
-        elif complexity == "very_high":
-            # Enterprise — saari queries + har query ka ek semantic variant add karo
-            if isinstance(queries, list):
-                expanded = []
-                for q in queries:
-                    expanded.append(q)
-                    expanded.append(f"Elaborate on: {q}")
-                queries = expanded
-
-        elif complexity == "maximum":
-            # Jarvis — saari queries + semantic + abstract + vedic variant
-            if isinstance(queries, list):
-                expanded = []
-                for q in queries:
-                    expanded.append(q)
-                    expanded.append(f"Elaborate on: {q}")
-                    expanded.append(f"From Vedic-scientific perspective: {q}")
-                    expanded.append(f"Hidden assumptions in: {q}")
-                queries = expanded
-
-        logging.info(f"[Query Complexity: {complexity}] Final query count: {len(queries) if isinstance(queries, list) else 'dict'}")
-        #-------------------------------
         # Ph 2.8 Trace — billing flag se control
         if cognitive_profile.get("trace_logging", False):
             logging.info(f"[TRACE Ph2.1-branches] {branches}")
-            logging.info(f"[TRACE Ph2.2-granularity] {granularity}")
+            logging.info(f"[TRACE Ph2.2-scope_items] count={len(query_scope_items)}")
             logging.info(f"[TRACE Ph2.3-shape] first_query={queries[0] if queries else 'empty'}")
-            logging.info(f"[TRACE Ph2.4-abstraction] granularity={granularity}")
             logging.info(f"[TRACE Ph2.6-budget] max_docs={cognitive_profile.get('max_docs', 6)}")
             logging.info(f"[TRACE Ph2.7-final_count] {len(queries)}")
+
+        logging.info(f"[Ph2.7] Final query count → {len(queries)}")
         return queries
 #===========================================================
 #==========LAYER 5 : REASONING & SYNTHESIS =================
@@ -3204,12 +3268,6 @@ async def main(
     # - domains
     # - required_depth
     #----------------------------------------------------------------
-    # # Layer-1 Hard Guarantees (Production Safety)
-    # layer1_bundle.setdefault("normalized_query", question)           #parmanent
-    # layer1_bundle.setdefault("thinking_type", "mixed")                                  delete krna hai
-    # layer1_bundle.setdefault("reasoning_plan", [])
-
-    #----------------------------------------------------------------
 
     # ===== Phase 2.4 : Intent State =====
     intent_engine = IntentStateEngine()
@@ -3231,14 +3289,13 @@ async def main(
     )
     
     logging.info(f"[Cognitive Route] → {cognitive_route}")
-    #-------------------------------------------------------------
+    
     world_state = {
         "domain": layer1_bundle.get("domains", ["general"])[0],
         "human_factor": "ethics" in layer1_bundle.get("domains", []),
         "ethical_weight": "high" if layer1_bundle.get("intent_type") in ["ethical", "philosophical"] else "low"
     }
    
-    #--------------------------------------------------------------
     # ================================
     # LAYER 2B — COGNITIVE LOAD CONTROLLER
     # ================================
@@ -3256,7 +3313,7 @@ async def main(
     # ===== 🔒 LAYER-2 HARD GUARANTEES (ADD THIS) =====
     cognitive_profile.setdefault("deep_reasoning", False)
     cognitive_profile.setdefault("use_emergent_concepts", False)
-    cognitive_profile.setdefault("max_docs", 6)
+    cognitive_profile.setdefault("max_docs", config.get("max_docs", 6))
     cognitive_profile.setdefault("query_complexity", "normal")
 
     # ===== Layer-2 Confidence Bootstrap =====
@@ -3272,7 +3329,7 @@ async def main(
       
     
     
-       # ================================
+    # ================================
     # LAYER 2 — ADAPTIVE QUERY EXPANSION
     # ================================
     
@@ -3285,54 +3342,22 @@ async def main(
         cognitive_profile=cognitive_profile,
         memory_graph=memory_graph   # Layer 4 hook
     )
-    #---------------------------------------------------
+    
     # 🔒 Layer-2 Production Lock
     if not isinstance(adaptive_queries, (dict, list)):                     #parmanent
         raise RuntimeError("Layer-2 output corrupted. Blueprint violation.")
 
-    #-----------------------------------------------
     
     logging.info(f"[Adaptive Queries] → {adaptive_queries}")
-    
-    #--------------------------------------------------------------------------
-       
+         
 
     # ===== Layer-2 → Router Bridge (Blueprint Compliant Fix) =====
-    try:
-        # Agar adaptive_queries Dictionary hai (Best for AGI Blueprint)
-        adaptive_query_text = (
-            " ".join(
-                q for group in adaptive_queries.values()
-                for q in group
-            )
-            if adaptive_queries else ""
-        )
-
-    except AttributeError:
-        # Fallback: Agar engine ne sirf ek simple List bheji hai
-        adaptive_query_text = " ".join(adaptive_queries)
-    
-    logging.info(f"Bridge Active: Combined Query for Layer-3 -> {adaptive_query_text}")
-
-    # # ===== Layer-2 → Router Bridge =====
-    # adaptive_query_text = " ".join(
-    #     q for group in adaptive_queries.values()
-    #     for q in group
-    # )
-    # # ===== Layer-2 Adaptive Feedback =====
-    # if sum(len(v) for v in adaptive_queries.values()) > 6:
-    #     cognitive_profile["deep_reasoning"] = True
-    #     cognitive_profile["query_complexity"] = "high"
-    
-    query_count = sum(len(v) for v in adaptive_queries.values()) if isinstance(adaptive_queries, dict) else len(adaptive_queries)
-    
-    if query_count > 6:
-        logging.info(f"[Layer2] query_count={query_count}, depth governed by billing tier")
+    adaptive_query_text = " ".join(adaptive_queries) if adaptive_queries else ""
+    logging.info(f"[Layer2→Layer3] Combined Query → {adaptive_query_text}")
+    query_count = len(adaptive_queries)
+    logging.info(f"[Layer2] final query_count={query_count}")
 
 
-    # if query_count > 6:
-    #     cognitive_profile["deep_reasoning"] = True
-    #     cognitive_profile["query_complexity"] = "high"
 
     # 🔁 Layer-2 → Cognitive Sync
     if cognitive_profile.get("deep_reasoning"):

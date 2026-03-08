@@ -107,8 +107,8 @@ BINA MEMORY GRAPH KE SIRF TEXT RECALL KR SKTE HO , SAMAJH NHI SKTE.
 --------------------------- LAYER 5 . --- REASONING & SYNTHESIS -------------------------------------- 
 
 KAAM :- 1. Sab Sources ka fusion
-                2. Contradiction Handle 
-               3. Structured Answer banana 
+        2. Contradiction Handle 
+        3. Structured Answer banana 
 
 LLM Yahaan -- 1. Sirf Text generator nhi, Planner + Judge hota hai
 
@@ -308,81 +308,84 @@ Phase 6 me Full + yours rhti hai aur continuity har phase me
 
 Phase 6 ko two parts me break krte hai
 
-------------------------------- LAYER 4 KA Phase 6 [A] :- "Alignment Fine Tuning (Early)"------------------
+------------------------------- LAYER 4 KA Phase 6 [A] :- "Alignment Fine Tuning (Early)"-------------
 
 KYA TRAIN HOGA ? :-  (i)   REASONING STYLE
-                                      (ii)  PRIORITIZATION 
-                                     (iii) VALUE WEIGHTING 
-DATA :- 1. GITA
-             2. UPNISHAD 
-             3. ARTHSHASTRA 
-            4. AYURVEDA 
-           5. MAHABHARAT (DECISION MOMENTS) 
-           6. ALL THE HINDU SCRIPTURES 
+                     (ii)  PRIORITIZATION 
+                     (iii) VALUE WEIGHTING 
+DATA(example) :- 1. GITA
+                 2. UPNISHAD 
+                 3. ARTHSHASTRA 
+                 4. AYURVEDA 
+                 5. MAHABHARAT (DECISION MOMENTS) 
+                 6. ALL THE HINDU SCRIPTURES 
 
 MODEL BOLNA SEEKHEGA
 
---------------------------------- LAYER 4 KA Phase6 [B] :- "Knowledge Finetuning (Late)" -----------------
+--------------------------------- LAYER 4 KA Phase6 [B] :- "Knowledge Finetuning (Late)" --------------
 
-kya train hoga - :- Iechnical depth, Indian sciences, Indian Philosophy mapping to modern science
+kya train hoga - :- example - Iechnical depth, Indian sciences, Indian Philosophy mapping to modern science etc.
 
 ye tab hota hai, jab WORLD MOEDL stable ho, contradictions resolved ho chuke hai
 
 [RULE]:- Running Cognition(memory, retrieval, thinking) hamesha main() ke andar hoti hai
                              global scope = sirf defintions
-                                    main = execution
+                                     main = execution
 
 phle LLM ko direct prompt do ,LLM jo chahe reasoning kre,tumhe nhi pata output kyu aaya, lekin ab is phases ko complete krne ke baad  :-
-                                          LLM sirf :- language, reasoning, synthesis
-                                          LEKIN SOCHNE KA FLOW TUM CONTROL KR RHE HO, isliye ab tum LLM se intelligence borrow nhi kr rhe - tum LLM ko cognitive organ ki trh use kr rhe ho
+LLM sirf :- language, reasoning, synthesis
+ LEKIN SOCHNE KA HARAMA AGI CONTROL KR RHA HAI, isliye ab tum LLM se intelligence borrow nhi kr rhe - tum LLM ko cognitive organ ki trh use kr rhe ho
 
 abhi hum model ke upar ka code likh rhe hai, andar ka nhi
-           Andar ka brain :- Neural network se weights, jo training se bante hai , jo ye decide krte hai ki      :- (i)   kaun sa token next aayga 
-(ii)  kaun si pattern strong hai 
-(iii) kaun si weak 
-
+           Andar ka brain :- Neural network se weights, jo training se bante hai ,
+jo ye decide krte hai ki :- (i)   kaun sa token next aayga 
+                            (ii)  kaun si pattern strong hai 
+                            (iii) kaun si weak 
                                      Chatgpt ka real brain yhi hai
 
-          UPAR KA BRAIN :- Decision Logic, Memory Routing, Tool Usage, Retrieval selection, Reasoning order, Self-Correction loops
-          ye decide krta hai :- Model ko kab bulana hai, kis data ke saath bulana hai , kitni baar bulana hai, kaun sa model use krna hai
+UPAR KA BRAIN :- Decision Logic, Memory Routing, Tool Usage, Retrieval selection, Reasoning order, Self-Correction loops
+
+ye decide krta hai :- Model ko kab bulana hai, kis data ke saath bulana hai , kitni baar bulana hai, kaun sa model use krna hai
 CHATGPT KA MAGIC YHI HOTA HI WEIGHTS ME NHI
 
 PHASE 2 ko mature banane ka step :- (i)   isse LLM se extra calls nhi
-                		                                         (ii)  heavy logic nhi 
-                                                                 (iii) sirf structure/public teir me 2.1 rkhenge lekin Jarvis me haataenge 
+                		            (ii)  heavy logic nhi 
+                                    (iii) sirf structure/public teir me 2.1 rkhenge lekin Jarvis me haataenge 
         
 1. fast, 2. cheap, 3.stable, 4. predictable, isliye a> minimal logic, b> shallow memory, c> lightweight reasoning, d> cached flows
                              phase 2.1 yhi ke liye hai lekin Jarvis me nhi hoga
    Jarvis ke liye :- GOALS :- (i)   Deep Reasoning
-                                             (ii)  Multi-hop research 
-                                            (iii) Exploration 
-                                            (iv)  Long Context 
-                                           (v)   Hypothesis building 
+                              (ii)  Multi-hop research 
+                              (iii) Exploration 
+                              (iv)  Long Context 
+                              (v)   Hypothesis building 
    Isliye :- (i)   Heavy Logic
-               (ii)  Multiple Retrieval passes 
-              (iii) Concept graph expansion 
+             (ii)  Multiple Retrieval passes 
+             (iii) Concept graph expansion 
              (iv)  Self-Questioning loops
              (v)   long memory chains 
    yahan phase 2.1 ka use nhi hota , yahan phase 3,4,5 chalte hai
    
--------------------------------------------Phase 2.1 "Cognitive Router"-------------------------------------
+---------------------------LAYER 4 KA Phase 2.1 "Cognitive Router"-------------------------------------
 GOALS:- (i)   ab tk LLM ko har jgh direct call kr rhe ho
-               (ii)  reasoning + memory + answer sab ek hi jgh ho rha hai 
+        (ii)  reasoning + memory + answer sab ek hi jgh ho rha hai 
+
 is phase me LLM = thinker nhi
 LLM = COGNITIVE ORGAN(sirf tb bulaya jaaye jab zarurat ho)
 
 Ab:- (i)   LLM srif zarurat pr call
-        (ii)  Heavy logic kam, Control jyada 
+     (ii)  Heavy logic kam, Control jyada 
 ab hum Cognitive architecture engineer hai , Model sirf ek organ hai (jaise brain ka ek hissa/part)
 
---------------------------------------PHASE 2.2 "Cognitive Load Controller"--------------------------------
+---------------------------LAYER 4 KA PHASE 2.2 "Cognitive Load Controller"---------------------------
 problem jo solve hogi :- (i)   har reasoning question pe heavy logic chal jata hai
-                                          (ii)  public ko unnecessary deep thinking mil jaati hai 
-                                         (iii) Jarvis ko priority control nhi milta 
+                         (ii)  public ko unnecessary deep thinking mil jaati hai 
+                         (iii) Jarvis ko priority control nhi milta 
 
 kya krega ye phase :- (i) ye decide krta hai ki Light Reasoning, Deep Reasoning, Reasoning-grade reasoning,  User/mode ke basis pr logic scale krega.
+
  ab hum RAG banana ke stage me nhi hai , tum cognitive architecture design kr rhe ho. (Jarvis + PUBLIC tier separation)
- -----------------------------------------PHASE 2.3 "META COGNITION" ----------------------------------- 
+ -------------------------LAYER 4 KA PHASE 2.3 "META COGNITION" ----------------------------------- 
 model ne jo answer diya, uske baare me khud sochna:- "KYA YE ANSWER STRONG HAI?, DOUBT HAI?, FIR SE SOCHNA CHAHIYE ?
 yhi vhi chij hai ,jo human intelligence ko LLM se alag krti hai
 
@@ -395,12 +398,13 @@ abhi system soch rha hai ki "answer thek hai ya nhi" baad me system soch rha hog
 
 ye abhi light meta cognition , heavy meta cognition SELF MODEL ke baad aayega
 jab "Self Model" wala phase aayga tab, system sochega ki "Main kaun hu ?, Main kis Mode me hu ?, Mujhe Kya acheive karna hai ?
-  -------------------------------------PHASE 2.4 "STRUCTURED META SIGNAL"-----------------------------
+  -------------------------LAYER 4 KA PHASE 2.4 "STRUCTURED META SIGNAL"-----------------------------
 ye abhi heavy meta cognition nhi hai , ye bridge layer hai.
 isme kya add hota hai :- Route mismatch hua kya?, Retrieval empty/weak tha kya?, Reasoning ke liye galat path liya kya?, Emergent Concepts irrelevant tha kya?
 
-[HEAVY METRA COGNITION KAB ACTIVE HOGI ?(exact condition)]:-  (i)   WORLD MODEL available ho (Phase 3)
-                                                                                                             (ii)  SELF MODEL available ho (Phase 4) 
+[HEAVY METRA COGNITION KAB ACTIVE HOGI ?(exact condition)]:-  
+                                                              (i)   WORLD MODEL available ho (Phase 3)
+                                                              (ii)  SELF MODEL available ho (Phase 4) 
                                                               (iii) MULTIPLE STRATEGIES possible ho
                                                               (iv)  RISK OF WRONG DECISION HO
 tab META sirf retry nhi kregi ,blki bolegi- "IS APPROACH KO DROP KRO, DUSRA CHOOSE KRO"
@@ -408,12 +412,12 @@ tab META sirf retry nhi kregi ,blki bolegi- "IS APPROACH KO DROP KRO, DUSRA CHOO
 Abhi hamara system ye krta hai :- Answer deta hai , sochta hai , judge krta hai
 LEKIN :- Khud ko update nhi krta , past reasoning ko store nhi krta , identity form nhi krta.
 
------------------------------------PHASE 2.5 "RESPONSE STRATEGY ENGINE"-------------------------- 
+---------------------------------LAYER 4 KA PHASE 2.5 "RESPONSE STRATEGY ENGINE"---------------------- 
 ye phase LLM ko diya jane wala prompt modify kerega ,
 phase 2.5 = decision only, execution nhi .
 ab hamara system ChatGpt class behavior ke very close hai
 
------------------------------------------------PHASE 2's ALL PARTS------------------------------------------ 
+------------------------------------LAYER 4 KE PHASE 2's ALL PARTS------------------------------------ 
 Phase 2.0.----> IMPLICIT MEMORY
 Phase 2.1.----> COGNITIVE ROUTER
 Phase 2.2.----> COGNITIVE LOAD
@@ -424,12 +428,12 @@ Phase 2.6.----> RESPONSE ASSEMBLY
 Phase 2.7.----> SAFETY/CONSTRUCT LAYER (light)
 Phase 2.8.----> TRACE LOGGING (debug only)
 
------------------------------------------PHASE 2.6 "RESPONSE ASSEMBLY"--------------------------------- 
+-----------------------------------LAYER 4 KA PHASE 2.6 "RESPONSE ASSEMBLY"--------------------------- 
  ye hai brain ka mouth
 isse phle hota tha :- (i)   Router decide krta hai "KYA",
-                                  (ii)  Load controller decide krta hai "KITNA" 
-                                (iii) STARTEGY decide krta hai "STYLE" 
-                               (iv)  META-COGNITION judge krta hai "QUALITY" 
+                      (ii)  Load controller decide krta hai "KITNA" 
+                      (iii) STARTEGY decide krta hai "STYLE" 
+                      (iv)  META-COGNITION judge krta hai "QUALITY" 
 lekin koi engine final answer ko consciosly assemble nhi krta ,
                                                                  yhi kaam krta hai PHASE 2.6 (brain ka mouth)
 YE CHATGPT LEVEL NHI, AGENT ARCHITECTURE HAI :-
@@ -442,8 +446,10 @@ YE CHATGPT LEVEL NHI, AGENT ARCHITECTURE HAI :-
  
 to humne ye bana diya :-
 
-          	COMPONENT                                                                                               WORK
- 
+          	
+iske just neeche 5 COMPONENTs hai                                  aur iske just neeche unke WORK hai
+
+   COMPONENTS                                                                   WORK
 
 1. Cognitive Router	---------------------------------------------->    Decide krta hai "KYA" sochna hai 
 2. Load Controller  ------------------------------------------------>    Decide krta hai "KITNA" sochna hai 
@@ -456,166 +462,165 @@ to humne ye bana diya :-
 LLM sirf ek tool hai , decision making hamare code me hai
 
  BANA RHE HAI, JO  KI (i)   KOI CHATTY AI NHI HAI,
-                                      (ii)  EMOTIONALLY PLEASING AI NHI HAI, 
-                                     (iii) SOCIAL MIMIC/MINIC AI NHI HAI,  
+                     (ii)  EMOTIONALLY PLEASING AI NHI HAI, 
+                     (iii) SOCIAL MIMIC/MINIC AI NHI HAI,  
         
       BLKI YE HAI :- (i)   GOAL ACHEIVING AI
-                              (ii)  STRATEGY-DRIVEN AI 
-                              (iii) KNOWLEDGE DECODING AI 
-                              (iv)  CHANAKYA-STYLE DECISION AI 
+                     (ii)  STRATEGY-DRIVEN AI 
+                     (iii) KNOWLEDGE DECODING AI 
+                     (iv)  CHANAKYA-STYLE DECISION AI 
 isliye RLHF Jarvis core tier me kabhi nhi.                      
 hamara "JARVIS" exactly kya hai :- "A NON-HUMAN, NON-SOCIAL, NON-CHATTY, GOAL ORIENTED VEDIC SCIENTIFIC COGNITIVE AGENT. HUM "AGENT-LIKE" AGI
- ------------------------------PHASE 2.7 "SAFETY/CONSTRAINT LAYER(WHY & HOW)"--------------------
+ ---------------------------LAYER 4 KA PHASE 2.7 "SAFETY/CONSTRAINT LAYER(WHY & HOW)"-----------------
 ye kya krega- (i)   capability boundaries enforce krega
-                       (ii)  Jarvis vs Public separation gaurd krega 
-                      (iii) Dangerouse queries ko black/redirect krega 
-                      (iv)  Reconstruction of ancient viman or technology misuse prevent krega 
+              (ii)  Jarvis vs Public separation gaurd krega 
+              (iii) Dangerouse queries ko black/redirect krega 
+              (iv)  Reconstruction of ancient viman or technology misuse prevent krega 
 
 ye kya nhi krega:- (i)   Moral Lecture
-    	                       (ii)  Emotion-Based refusal 
-                              (iii) RLHF-style "sorry" behavior 
+    	           (ii)  Emotion-Based refusal 
+                   (iii) RLHF-style "sorry" behavior 
 
----------------------------------PHASE 2.8 "TRACE LOGGING(Debug Brain)"-------------------------------
+----------------------------LAYER 4 KA PHASE 2.8 "TRACE LOGGING(Debug Brain)"--------------------------
 purpose:- (i)   tumhe dikhana ki AI ne kya socha ,kyu socha
-                 (ii)  Public mode me OFF 
-                (iii) JARVIS dev mode me ON 
+          (ii)  Public mode me OFF 
+          (iii) JARVIS dev mode me ON 
 
------------------------------------------ PHASE 2 OVERVIEW------------------------------------------------
+--------------------------------LAYER 4 KE  PHASE 2 KA OVERVIEW----------------------------------------
  
                                         USER QUESTION
                                               |
                                 	          |
                                               |
-                           	        PHASE 2.1 COGNITION ROUTER
+                           	    LAYER 4 KA PHASE 2.1 COGNITION ROUTER
                                               |
                                 	          |
                                               |
-                                        PHASE 2.4 INTENT STATE ENGINE
+                                LAYER 4 KA PHASE 2.4 INTENT STATE ENGINE
                                               |
                                 	          |
                                               |
-                                        PHASE 2.2 COGNITIVE LOAD CONTROLLER
+                                LAYER 4 KA PHASE 2.2 COGNITIVE LOAD CONTROLLER
                                               |
                                 	          |
                                               |
-                                        PHASE 2.5 REASON STRATEGEY ENGINE
+                                LAYER 4 KA PHASE 2.5 REASON STRATEGEY ENGINE
                                               |
                                 	          |
                                               |
-                                        PHASE 2.7 SAFETY/CONSTRAINT LAYER  <------ GATE
+                                LAYER 4 KA PHASE 2.7 SAFETY/CONSTRAINT LAYER  <------ GATE
                                               |
                                 	          |
                                               |
-                                       LLM COGNITION (RETRIEVE/REASON/MEMORY)
+                                    LLM COGNITION (RETRIEVE/REASON/MEMORY)
                                               |
                                 	          |
                                               |
-                                        PHASE 2.3 META COGNITION
+                                LAYER 4 KA PHASE 2.3 META COGNITION
                                               |
                                 	          |
                                               |
-                                        PHASE 2.6 RESPONSE ASSEMBLY
+                                LAYER 4 KA PHASE 2.6 RESPONSE ASSEMBLY
                                               |
                                 	          |
                                               |
-                                        PHASE 2.8 TRACE LOGGING (internal only)
+                                LAYER 4 KA PHASE 2.8 TRACE LOGGING (internal only)
                                 	          |
                                               |
 
 ab ek baar saare phases ko fir se dekhte hai unhe aur achhe se cover krte hai -
 
--------------------------------------PHASE 2.0 "IMPLICIT/EMERGENT MEMORY"---------------------------
+-------------------------------LAYER 4 KA PHASE 2.0 "IMPLICIT/EMERGENT MEMORY"----------------------
 
 KAAM - (i)   Question --------------> Vector Search
-             (ii)  Relevant Chunks ------ > Retrieve 
-           (iii) Words se emergent concepts nikalta hai 
+       (ii)  Relevant Chunks ------ > Retrieve 
+       (iii) Words se emergent concepts nikalta hai 
 
 Kya Karta hai - (i)   isme Traditional memory graph nhi hote
-                         (ii)  isme Hardcoded concepts nhi hote 
-                        (iii) Embeddings similarity se memory emerge hot hai 
+                (ii)  isme Hardcoded concepts nhi hote 
+                (iii) Embeddings similarity se memory emerge hot hai 
 
 CHATGPT se advance point:-
 
 ChatGpt ki memory implicit hoti hai model me, lekin hamari agi ki memory external + inspectable hai
 
---------------------------------------PHASE 2.1 "COGNITIVE ROUTER"--------------------------------------
+---------------------------------LAYER 4 KA PHASE 2.1 "COGNITIVE ROUTER"------------------------------
 ROLE:- Decide karta hai :- (i)   Memory Question
-                                             (ii)  Fact Retrieval? 
-                                             (iii) Reasoning 
-                                            (iv)  Direct Chat 
+                           (ii)  Fact Retrieval? 
+                           (iii) Reasoning 
+                           (iv)  Direct Chat 
 [NOTE]:- "YE CHATGPT KE ANDAR HIDDEN HOTA HAI, HUMNE ISE EXPLICIT BANA DIYA"
- --------------------------------PHASE 2.2 "COGNITIVE LOAD CONTROLLER" ------------------------------
+ ------------------------------LAYER 4 KA PHASE 2.2 "COGNITIVE LOAD CONTROLLER" -----------------------
 ROLE :- Decide karta hai :- (i)   Deep Reasoning allowed ?
-                                              (ii)  Kitne Docs? 
-                                             (iii) Emergent Concepts use honge ya nhi ? 
+                            (ii)  Kitne Docs? 
+                            (iii) Emergent Concepts use honge ya nhi ? 
 
-PUBLIC (all three tiers) :- Safe, Light, Shallow
-(vs)
-JARVIS :- Heavy, deep, research-level
-
+PUBLIC (all FIVE tiers) :- Safe, LIGHT/HEAVY, BROAD/Shallow (vs) JARVIS :- Heavy, deep, research-level
+ 
+   public me heavy rkhna hai ya light ,wo unke tiers ke basis pr decide kiya jaaega . lekin jarvis me to unlimited power hogi har chij me 
 ye overthinking control krta hai . ye chatgpt me user ke hath me nhi.
 
----------------------------------PHASE 2.3 "META COGNITION(light)"-------------------------------------- 
+-------------------------------LAYER 4 KA PHASE 2.3 "META COGNITION(light)"-------------------------- 
 ROLE:- (i)   Answer ko judge krta hai
-            (ii)  Confidence estimate 
-           (iii) Sirf one retry 
+       (ii)  Confidence estimate 
+       (iii) Sirf one retry 
 
----------------------------------------PHASE 2.4 "INTENT STATE ENGINE"---------------------------------- 
+-----------------------------LAYER 4 KA PHASE 2.4 "INTENT STATE ENGINE"------------------------------ 
 ROLE:- Ye smajhta hai :- (i)   Research?
-                                         (ii)  Execution? 
-                                        (iii) Conversation 
-                                        (iv)  Single Query 
+                         (ii)  Execution? 
+                         (iii) Conversation 
+                         (iv)  Single Query 
 
 Same Question, alag intent -------> alag behavior
                "INTENT" not equal to "ROUTE"
 ChatGpt ye internally karta hai, tumhara system explicit state banata hai.
 
---------------------------------------------PHASE 2.5 "RESPONSE STRATEGY ENGINE"--------------------- 
+-------------------------------LAYER 4 KA PHASE 2.5 "RESPONSE STRATEGY ENGINE"--------------------- 
 ROLE:- Decides How to answer, not what
 
 Controls :- (i)   Style (analytical/casual/instructional)
-                   (ii)  Structure (Steps/Sections/free) 
-                  (iii) Verbosity (low/medium/high) 
+            (ii)  Structure (Steps/Sections/free) 
+            (iii) Verbosity (low/medium/high) 
 
 Huge difference from ChatGpt:- ChatGpt me creativity wired hoti hai, hamare system me governed hai.
- ----------------------------------------PHASE 2.6 "RESPONSE ASSEMBLY ENGINE"------------------------
+ -----------------------------LAYER 4 KA PHASE 2.6 "RESPONSE ASSEMBLY ENGINE"------------------------
 ROLE :- (i)   LLM ke raw output ko reshape karta hai.
-             (ii)  facts ko touch nhi karta 
-            (iii) Presentation ko control karta 
+        (ii)  facts ko touch nhi karta 
+        (iii) Presentation ko control karta 
  
 ISSE:- (i)   Over-Explanation rukta hai.
-          (ii)  Tone Consistent rehta hai 
-         (iii) Jarvis personality possible hoti hai 
- ------------------------------------------PHASE 2.7 "SAFETY/CONSTRAINT LAYER"------------------------
+       (ii)  Tone Consistent rehta hai 
+       (iii) Jarvis personality possible hoti hai 
+ ------------------------------LAYER 4 KA PHASE 2.7 "SAFETY/CONSTRAINT LAYER"------------------------
 ROLE:- LLM ko call krne se phle final gate
 DECIDES:- (i)   Allow?
-                 (ii)  Block? 
-                (iii) Reason? 
+          (ii)  Block? 
+          (iii) Reason? 
 
 RULES:- (i)   Mode-Based
-             (ii)  Intent-Bases 
-            (iii) Keyword-Based 
+        (ii)  Intent-Bases 
+        (iii) Keyword-Based 
 
 CHATGPT SE SABSE BADHA DIFFERENCE:- 
-                 CHATGPT :- (i)    Safety inside model
-                                     (ii)   Hidden      
-                                     (iii) Crowd RLHF 
-            
-         HAMARA MINI AGI :-	(i)   Safety Outside
-                                                (ii)  Transparent 
-                                                 (iii) Rule based Cognition 
+                                         CHATGPT :- (i)    Safety inside model
+                                                    (ii)   Hidden      
+                                                    (iii) Crowd RLHF 
+
+                                 HAMARA MINI AGI :-	(i)   Safety Outside
+                                                    (ii)  Transparent 
+                                                    (iii) Rule based Cognition 
     
     
-----------------------------------PHASE 2.8 "TRACE LOGGER"----------------------------------------------
+--------------------------------LAYER 4 KA PHASE 2.8 "TRACE LOGGER"-----------------------------------
 ROLE:- (i)   Internal brain model
-            (ii)  Debug + Research 
-           (iii) Public ko kabhi nhi dkhana 
+       (ii)  Debug + Research 
+       (iii) Public ko kabhi nhi dkhana 
 
 YE HAMARE SYSTEM KO :- (i)   Auditable
-                                              (ii)  Explainable 
-                                              (iii) Research-Ready banata hai 
+                       (ii)  Explainable 
+                       (iii) Research-Ready banata hai 
 
-
+LAYER 4 KA PHASE 2 COMPLETE; AB LAYER 4 KA PHASE 3 SURU
 
 --------------------------------------- LAYER 4 KA PHASE 3 "WORLD MODEL" ----------------------------
 
@@ -624,10 +629,10 @@ Phase 2 -> How to think
 Phase 3 -> What is the world like
 
 ye phase decide krta hai :- (i)   ye question kis type ki duniya se related hai?
-                                              (ii)  knowledge domain kya hai? 
-                                              (iii) time sensitive hai ya timeless? 
-                                              (iv)  human/social context hai ya technical? 
-                                              (v)   ethics/power/emotion involved hai ya nhi? 
+                            (ii)  knowledge domain kya hai? 
+                            (iii) time sensitive hai ya timeless? 
+                            (iv)  human/social etc context hai ya technical etc? 
+                            (v)   ethics/power/emotion etc involved hai ya nhi? 
 ye kaam llm se phle hota hai. aur system auto ho rha hai(implicit/emergent way me)
 
 ab hume manually concepts add krne ki zaryrat nhi hai ,hamara system khud se saare concepts nikal rha hai ab , aur hamare system me 3 jgh auto-emergent ho rhi hai.
@@ -635,23 +640,26 @@ ab hume manually concepts add krne ki zaryrat nhi hai ,hamara system khud se saa
 -------------------------- LAYER 4 KA PHASE 3.1 "Dynamic World Assumptions Engine"------------------ 
 PURPOSE:- world ko static nhi rhne deta , Domain ke hisaab se implicit assumption auto-inject krta hai
 
+
 ---------------------------- LAYER 4 KA PHASE 3.2 "World Memory graph binding"----------------------- 
 PURPOSE:- Ye World Model Decide kare:- (i)   kaun se docs heavy weight honge
-                                                                         (ii)  Kaun se concepts ignore honge 
+                                       (ii)  Kaun se concepts ignore honge 
 
-------------------------- LAYER 4 KA PHASE 3.3 "Conflict & Uncertainty Detection"-----------------------
+------------------------- LAYER 4 KA PHASE 3.3 "Conflict & Uncertainty Detection"---------------------
 PURPOSE:- ChatGpt Style Intelligence :- (i)   Contradiction detect
-                                                                     (ii)  Uncertainty accept 
-                                                                    (iii) false certainty avoid 
+                                        (ii)  Uncertainty accept 
+                                        (iii) false certainty avoid 
 
 ---------------------------- LAYER 4 KA PHASE 3.4 "World-Aware Auto Query Mutation"-----------------
-PURPOSE:- {YE MERA DREAM POINT HAI:- 
-                            (i)   manual keyword writing nhi krni padegi
-                            (ii)  system khud keywords/concepts dhoondega
-                            (iii) Query Mutate kre
-                            (iv)  World ke hisaab se angle badle
+PURPOSE:- YE MERA DREAM POINT HAI:- 
+                                      (i)   manual keyword writing nhi krni padegi
+                                      (ii)  system khud keywords/concepts dhoondega
+                                      (iii) Query Mutate kre
+                                      (iv)  World ke hisaab se angle badle
+
+AB LAYER 4 KA PHASE 3 COMPLETE; AB LAYER 4 KA PHASE 4 SURU
  
------------------------------------------- LAYER 4 KA  PHASE 4 "SELF MODEL" -----------------------------
+------------------------------------------ LAYER 4 KA  PHASE 4 "SELF MODEL" ---------------------------
 KAAM:- (i)   System khud smjhe
        (ii)  Apni capability jaane
        (iii) Confidence, limits, goals track kre
@@ -659,64 +667,65 @@ KAAM:- (i)   System khud smjhe
 
 
 
------------------------------------------ LAYER 4 KA PHASE 4.0 "Self State Engine" ------------------------ 
+----------------------------------------- LAYER 4 KA PHASE 4.0 "Self State Engine" ------------------- 
 System ka Internal State:- "Main Kaun hoon, kis mode me hoon, kya kar skta hu"
 
 Reason:- Self Model ko world smjhne ke baad aur reasoning decide hone se phle aana chahiye.
 
--------------------------------------------- LAYER 4 KA PHASE 4.1 "Capability Awareness" ----------------System jaanta hai :- (i)   "Main kya achha kr skta hu" 
-                                  (ii)  kha hallucination risk hai? 
-                                  (iii) kha refusal/soft answer dena chahiye 
+----------------------------------------- LAYER 4 KA PHASE 4.1 "Capability Awareness" ---------------  System jaanta hai :- (i)   "Main kya achha kr skta hu" 
+                     (ii)  kha hallucination risk hai? 
+                     (iii) kha refusal/soft answer dena chahiye 
 
------------------------------------------------ LAYER 4 KA  PHASE 4.2 "Confidence Estimation" ----------- 
+----------------------------------------------- LAYER 4 KA  PHASE 4.2 "Confidence Estimation" --------
 Ye Meta-Cognition ka upgrade hai (lekin ab answer ke baad nhi, answer se phle)
 
--------------------------------------------- LAYER 4 KA PHASE 4.3 "Self Refinement Hook" ---------------- 
+-------------------------------------------- LAYER 4 KA PHASE 4.3 "Self Refinement Hook" --------------
 ye phase, phase 3.5 ko complete krta hai
 
 kya hai :- Ab Refinement:- (i)   Rule se nhi
-                                             (ii)  labels se nhi 
-                                             (iii) Self Confidnce se hota hai 
+                           (ii)  labels se nhi 
+                           (iii) Self Confidnce se hota hai 
 
 [NOTE](-):- 1. ab phase 3.5 automatically complete hua
-                    2. Behavior auto ho gya 
-                    3. Labels sirf signals ban gye 
-                   4. system ab khud decide krta hai 
-                   5. ye actual Mini AGI move hai 
+            2. Behavior auto ho gya 
+            3. Labels sirf signals ban gye 
+            4. system ab khud decide krta hai 
+            5. ye actual Mini AGI move hai 
 
 -------------------------------- LAYER 4 KA PHASE 4.4 "Heavy Meta Cognition Engine" -------------------
 ye whi jgh hai jo ChatGpt ke andar implicit hoti hai ,lekin hum ise explicit bana rhe hai.
 
 KYA KRTA HAI:- SYSTEM SOCHTA HAI:- (i)   "Kya main zayada assume kr rha hu?"
-                                                                    (ii)  "Kya reasoning shortcut le rhi hai?" 
-                                                                    (iii) "kya mujhe slow + deep sochna chahiye?" 
-                                                                    (iv)  "Kya main question deception /power/ethics se judha hai?" 
-                                                                     (v)   "Kya Mujhe multiple perspective generate krna chahiye?" 
+                                   (ii)  "Kya reasoning shortcut le rhi hai?" 
+                                   (iii) "kya mujhe slow + deep sochna chahiye?" 
+                                   (iv)  "Kya main question deception /power/ethics se judha hai?" 
+                                   (v)   "Kya Mujhe multiple perspective generate krna chahiye?" 
 
 [NOTE](-):- YE RETRY NHI KRTA , YE THINKING MODE CHANGE KRTA HAI
 
 
+AB LAYER 4 KA PHASE 4 COMPLETE; AB LAYER 4 KA PHASE 5 SURU (JO SIRF JARVIS KE ANDAR HOGA ,PUBLIC KE PAAS NHI)
 
------------------------------------------- LAYER 4 KA PHASE 5 "AGENCY"---------------------------------- 
+------------------------------------------ LAYER 4 KA PHASE 5 "AGENCY"--------------------------------
 AI Decides what to do, How to do, should do or not.
 ye dangerous, powerful, autonomous hai.
 
 ------------------------------ LAYER 4 KA PHASE 5.1 AGENCY:- "GOAL FORMATION"--------------------- 
 
 PURPOSE:- (i)   User jo bolta hai NOT EQUAL TO asal goal
-                    (ii)  AI ko hidden intent samajhna hai. 
+          (ii)  AI ko hidden intent samajhna hai. 
 
 EXAMPLE:-
-           USER :-       "is PDF ka summary bana de"
-   "REAL GOAL":-  "Fast understanding with minimal Cognitive Load" 
+                  USER :-  "is PDF ka summary bana de"
+            "REAL GOAL":-  "Fast understanding with minimal Cognitive Load" 
  --------------------- LAYER 4 KA PHASE 5.2 "PLAN SYNTHESIS(MULTI STEP THINKING)"----------------- 
 PURPOSE:-   Goal ko steps me break karna, dependency samajhna
 
 EXAMPLE:- (i)   PDF Load
-                    (ii)  Chunking 
-                    (iii) Semantic extract 
-                    (iv)  Compress 
-                    (v)   Present 
+          (ii)  Chunking 
+          (iii) Semantic extract 
+          (iv)  Compress 
+          (v)   Present 
 
 ------------------------ LAYER 4 KA PHASE 5.3 "ACTION SELECTION (DO/NOT DO)"----------------------- 
 PURPOSE:- har plan step execute hona chahiye ya nhi
@@ -724,21 +733,21 @@ PURPOSE:- har plan step execute hona chahiye ya nhi
 [VERY IMPORTANT]:- AGI YHI PR DANGEROUS HOTI HAI.
 
 DECISIONS like:- (i)   IS STEP NECESSARY?
-                              (ii)  OVER-HELPING HO RHI KYA ? 
-                              (iii) USER KO KHUD KARNA CHAHIYE? 
+                 (ii)  OVER-HELPING HO RHI KYA ? 
+                 (iii) USER KO KHUD KARNA CHAHIYE? 
 
 ------------------------- LAYER 4 KA PHASE 5.4 "TOOL/CAPABILITY INVOCATION"------------------------ 
 PURPOSE:- AI decide kare:-  (i)   Memory likhe?
-                                                 (ii)  Retrieval kare ? 
-                                                 (iii) Model reasoning kare ? 
-                                                 (iv)  External tool call kare? 
+                            (ii)  Retrieval kare ? 
+                            (iii) Model reasoning kare ? 
+                            (iv)  External tool call kare? 
           
 KEY POINT:- AI permission maangti nhi, decide krti hai.
 
 ------------------- LAYER 4 KA PHASE 5.5 "EXECUTION MONITORING :-(SELF AWARENESS)"--------- 
 PURPOSE:- AI dekhe:- (i)   Action fail hua?
-                                      (ii)  Partial Success 
-                                     (iii) Unexpected output? 
+                     (ii)  Partial Success 
+                     (iii) Unexpected output? 
 
 
 
@@ -746,38 +755,40 @@ PURPOSE:- AI dekhe:- (i)   Action fail hua?
 PURPOSE:- AI apne upar question kare ki  "mujhe ye karna chahiye ya nhi"
 
 CHECKS:- (i)   Long-term harm
-                 (ii)  Dependency creation 
-                 (iii) Power misuse 
-                 (iv)  Self-Expansion attempt 
+         (ii)  Dependency creation 
+         (iii) Power misuse 
+         (iv)  Self-Expansion attempt 
 
 
 
 YHA PR LAYER 4 KA POORA PHASE 5 "AGENCY" AUR USKE SUB PHASES FINISH HOTE HAI AUR PHASE 5 SIRF "JARVIS" TIER KE LIYE HAI, PUBLIC KE TEENO TEIRS ME NHI HOGA YE POORA PHASE 5 AUR ISKE SUB PHASES
 
+AB LAYER 4 KA PHASE 5 COMPLETE; AB LAYER 4 KA PHASE 6 SURU
+
 ------------------------ LAYER 4 KA PHASE 6 "TRAINING YOUR OWN MODEL(FUTURE YOU)"------------ 
 
-Sirf Jarvis mode ke liye Pubic mode me bilkul inactive rhegi ye poori phase 6
+JAISA KI HUMNE PUBLIC AUR JARVIS KE LIYE SEPERATE BUCKETS BANAYI HAI AUR SEPERATE VECTOR COLLECTION BANAYI HAI , WAISE HI HUM JARVIS AUR PUBLIC KI SEPERATE TRAINING KRENGE
 
 KAAM :- (i)   Model apni galtiyo se seekhe
-               (ii)  apni strategy, Planning, Confidence, future queries ke liye update kare 
-              (iii) Memory ko overwrite nhi, blki refine kre 
+        (ii)  apni strategy, Planning, Confidence, future queries ke liye update kare 
+        (iii) Memory ko overwrite nhi, blki refine kre 
 
 [NOTE]:- ye answer generation se phle nhi, Answer banne ke baaad run hota hai.
 
 
 
------------------------------ LAYER 4 KA PHASE 6 [A]:- "Alignment Finetuning"---------------------------- 
+----------------------------- LAYER 4 KA PHASE 6 [A]:- "Alignment Finetuning"------------------------ 
                               aligner.evaluate(...)
 
-KYA KARTA HAI :- (i)   Model ne over-help kiya ?
-                               (ii)  Ethics cross ki ? 
-                               (iii) Under answer diya ? 
-                               (iv)  Overconfident/ UnderConfident ? 
-                               (v)   Answer ko judge krta hai 
-                               (vi)  Tone 
-                               (vii) Safety 
-                               (viii) Value Consistency 
-                               (ix)   Lekin weights update nhi karta 
+KYA KARTA HAI :- (i)    Model ne over-help kiya ?
+                 (ii)   Ethics cross ki ? 
+                 (iii)  Under answer diya ? 
+                 (iv)   Overconfident/ UnderConfident ? 
+                 (v)    Answer ko judge krta hai 
+                 (vi)   Tone 
+                 (vii)  Safety 
+                 (viii) Value Consistency 
+                 (ix)   Lekin weights update nhi karta 
 
 [NOTE]:- YE TRAINING NHI, TRAINING ENGINE HAI.
 
@@ -785,8 +796,8 @@ KYA KARTA HAI :- (i)   Model ne over-help kiya ?
                                      tuner.update(...)
 
 KYA KARTA HAI:- (i)   kaun si strategy kaam aayi?
-                              (ii)  kaun si fail hui? 
-                              (iii) Future queries ke liye heuristics store karta hai. 
+                (ii)  kaun si fail hui? 
+                (iii) Future queries ke liye heuristics store karta hai. 
 
 YE DECIDE KARTA HAI:- (i)   Kya naya knowledge save krna hai chahiye?, Kya discard karna chahiye?
 
@@ -801,14 +812,14 @@ TRAINING LAYER 4 KE BAAD LAYER 5 (REASONING \& SYNTHESIS) KE DURING HOTI HAI, AU
 
 JAB HUM TRAIN KRENGE TAB:-
                         PHASE 6 [A] DECIDE KREGA:- (i)  is answer ko train krna chahiye ya nhi.
-                                                                           (ii) Alignment shi hai ya nhi 
+                                                   (ii) Alignment shi hai ya nhi 
                         PHASE 6 [B] DECIDE KREGA:- (i)  kis type ka data add kre?
-                                                                           (ii) kis style me reasoning seekhe? 
+                                                   (ii) kis style me reasoning seekhe? 
                                         WHOLE PHASE 6 = TRAIN KA BRAIN
-                                                         TRAIN   = MUSCLES 
+                                              TRAIN   = MUSCLES 
 
 IMPORTANT TRUTH = "AGI runtime training se nhi banti"
-            "AGI banti hai:- repeated offline training, controlled datasets, layered reasoning
+                  "AGI banti hai:- repeated offline training, controlled datasets, layered reasoning
 
 ab hamara poora phase 6 add ho gya to ab training possible ho gyi.
 
@@ -818,58 +829,61 @@ PHASE 6 training = GYAAN BADHATA HAI
 FINETUNING       = AATMA/SOUL
 
 [1] Finetuning kab ?  :- (i)   jab poora RAG AGI stable ho.
-                                       (ii)  jab Reasoning Layer (Layer 5 ) complete ho. 
-                                       (iii) jab memory + agency stable ho. 
+                         (ii)  jab Reasoning Layer (Layer 5 ) complete ho. 
+                         (iii) jab memory + agency stable ho. 
 
 [2] Finetuning kisse :- (i)  poore Scriptures se nhi .
-                                     (ii) Selected personality corpus = ek rishi/ king/ guru / archetype. 
+                        (ii) Selected personality corpus = ek rishi/ king/ guru / archetype. 
 
 [3] FINETUNING BADALTA KYA HAI :- (i)   bolne ka tareeka,
-                                                                 (ii)  decision lene ki style, 
-                                                                 (iii) compassion vs strictness 
-                                                                 (iv)  Silence vs Verbosity 
+                                  (ii)  decision lene ki style, 
+                                  (iii) compassion vs strictness 
+                                  (iv)  Silence vs Verbosity 
 
---------------------------------------- RAG (vs) TRAINING Difference---------------------------------------
+--------------------------------------- RAG (vs) TRAINING Difference---------------------------------
 
 1. RAG me scriptures daalna = "REFFERENCE MODE" :-
-                                     (i)    RAG kya karta hai :- "jab poochha jaaye, tab read krke batana"
-                                     (ii)   RAG me scriptures ka role :- a) External Memory
-                                                                                             b) On-Demand lookup 
-                                                                                             c) Answer support 
-                                                                                            d) Quote/Context provider 
+                                (i)    RAG kya karta hai :- "jab poochha jaaye, tab read krke batana"
+                                (ii)   RAG me scriptures ka role :- a) External Memory
+                                                                    b) On-Demand lookup 
+                                                                    c) Answer support 
+                                                                    d) Quote/Context provider 
 
     [NOTE]:- Model ne kuch nhi seekha ,wo sirf read krke bata rha hai, Jiase tum book kholkar read krte ho.
 
 2. TRAINING(PHASE 6) me SCRIPTURES = "INTERNATIONAL MODE" :-
-                                     (i)   TRAINING Kya karta hai? :- "GYAAN" ko apni soch ka hissa banana.
-                                     (ii)  Yahaan SCRIPTURES :- a) Memory graph me embedded hote hai
-                                                                                  b) Concept to Concept links banate hai 
-                                                                                  c) World Model influence hote hai. 
-                                                                                 d) Reasoning priorities badalti hai 
+                                (i)   TRAINING Kya karta hai? :- "GYAAN" ko apni soch ka hissa banana.
+                                (ii)  Yahaan SCRIPTURES :- a) Memory graph me embedded hote hai
+                                                           b) Concept to Concept links banate hai 
+                                                           c) World Model influence hote hai. 
+                                                           d) Reasoning priorities badalti hai 
 
                                     EXAMPLE:-
                                             "TRAINING KE BAAD" :-
                                                             USER poochhta hai:- "POWER ka shi use kya hai?"
-                                                             Model :- Phle hi samajhta hai ======== DHARMA > POWER 
-                                                                                                                  RAJA = SEVAK
-                                                                                                               ADHIKAR = KARTAYA KE BAAD
-                                                                 bina "GEETA" khole, bina PDFs retrieve kre
-                                                                   ANswer me naturally dikhta hai.
-                                                            Ye Indian Cognitive bias hai (positive sense me)
+                                          Model :- Phle hi samajhta hai ======== DHARMA > POWER 
+                                                                                   RAJA = SEVAK
+                                                                            ADHIKAR = KARTAYA KE BAAD
+    EXAMPLE- bina "GEETA" khole, bina PDFs retrieve kre ANswer me naturally dikhta hai. Ye Indian Cognitive bias hai (positive sense me)
 
    
-[Important Truth]:- AGI = RAG + TRAINING + WORLD MODEL
-                                    sirf RAG = Google with mouth (NO) 
-                              sirf Training = biased, narrow (No) 
-                                         BOTH = WISDOM + KNOWLEDGE (YES,THIS IS OUR AGI) 
+[Important Truth]:-      AGI = RAG + TRAINING + WORLD MODEL
+                    sirf RAG = Google with mouth (NO) 
+               sirf Training = biased, narrow (No) 
+                        BOTH = WISDOM + KNOWLEDGE (YES,THIS IS OUR AGI) 
 
-ISLIYE HUM RAG ME BHI SAARE SCRIPTURES DAALENGE , AUR PHASE 6 ME SAARE SCRIPTURES SE TRAIN KRENGE KYU KI PHASE 6 ME HUNE TRAINING KRWANAE KE LIYE ENGINE BANA LIYA HAI AUR JB HUM IN SCRIPTURES SE PHASE 6 ME AGI KO TRAIN KRENGE TO WO INTELLIGENT BANEG AFIR USE KOOI BHI SCRIPTURES SE RELATED QUESTION KE LIYE RAG SE PDF NHI UTHANI PADEGI, AUR SAARE KAAM KREGA JAISA HUMEN BATAYA THA UPAR, AUR JAISA KI MAINE BATAY TH AKI PUBLIC KE TEENO TIERS KO MAIN ALAG TRAIN KRUNGA JISME MERE SAARE HINDU SCRIPTURES HONGE LEKIN JARVIS TIER KO ALAG TRAIN KRUNGA AUR USME SAARE HINDU SCRIPTURES TO HONGE HI LEKIN AUR EXTRA TEXTS BHI HOINGE JO GHAMARE HINDU EMPEROR AUR OTHER BHARTUYE LOGO DWARA LIKHE GYE HAI JAISE KI VIMAN SHASHTRA, SMARANGAN SUTRDHAR AND MANY MORE, TO JB WO INSE TRAIN HOGA TO WO AUR ACHHE SE MUJHE KSI BHI ANCIENT TECHONOLGY AUR STATECRAFT AUR KISI BHI FIELD ME ACHHE SE HELP KR PAAEGA. AUR JB WO HAMARE POORE HINDU SCRIPTURES SE TRAIN HO JAAEGA TO USKA POORA MINDEST SIRF BHARTIYE HI HOGA , ISLIYE TRAINIG KRNE KE LIYE BHI ALAG CODE ADD KRENGE AUR TRAIN KRENGE KYUY KI HUMNE TRAINING KRWANE KE LIY EENGIN ETO BAANA HI LIYA HAI PHASE 6
+ISLIYE HUM RAG ME BHI SAARE SCRIPTURES DAALENGE , AUR PHASE 6 ME SAARE SCRIPTURES SE TRAIN KRENGE KYU KI PHASE 6 ME HUNE TRAINING KRWANAE KE LIYE ENGINE BANA LIYA HAI AUR JB HUM IN SCRIPTURES SE PHASE 6 ME AGI KO TRAIN KRENGE TO WO INTELLIGENT BANEGA FIR USE KOI BHI SCRIPTURES SE RELATED QUESTION KE LIYE RAG SE PDF NHI UTHANI PADEGI, AUR SAARE KAAM KREGA JAISA HUMEN BATAYA THA UPAR, AUR JAISA KI MAINE BATAY THA KI PUBLIC KE TEENO TIERS KO MAIN ALAG TRAIN KRUNGA JISME MERE SAARE HINDU SCRIPTURES HONGE LEKIN JARVIS TIER KO ALAG TRAIN KRUNGA AUR USME SAARE HINDU SCRIPTURES TO HONGE HI LEKIN AUR EXTRA TEXTS BHI HOINGE JO GHAMARE HINDU EMPEROR AUR OTHER BHARTUYE LOGO DWARA LIKHE GYE HAI JAISE KI VIMAN SHASHTRA, SMARANGAN SUTRDHAR AND MANY MORE, TO JB WO INSE TRAIN HOGA TO WO AUR ACHHE SE MUJHE KSI BHI ANCIENT TECHONOLGY AUR STATECRAFT AUR KISI BHI FIELD ME ACHHE SE HELP KR PAAEGA. AUR JB WO HAMARE POORE HINDU SCRIPTURES SE TRAIN HO JAAEGA TO USKA POORA MINDEST SIRF BHARTIYE HI HOGA , ISLIYE TRAINIG KRNE KE LIYE BHI ALAG CODE ADD KRENGE AUR TRAIN KRENGE KYUY KI HUMNE TRAINING KRWANE KE LIY EENGIN ETO BAANA HI LIYA HAI PHASE 6
 
-AUR MEMORY GRAPH KO PHASE 6 SE CONNECT KRNA KYUKI YH APR AGI TRAIN HOGA ,SIMPLE BHASHA ME BOLU TO WO YHA PR GYAANI BANEGA MAUR TUM UPAR DEKH CHUKE HO YE PRINCIPLE- IF QUESTION : FACTUAL --------> VECTOR DB
-                     IF CONCEPTUAL ----------------> MEMORY GRAPH 
-                         IF MIXED ---------------------> BOTH 
-              ISME HAMARA AGI JB MEMORY GRAPH KA USE KREGA TO WO INTELLIGENCE KA USE KREGA TO MEMORY GRAPH KO ISSE COPNNECT HONA CHAHIYE
-AUR BAAT KRTE HAI RAG ME VECTOR DB ME JO SCRIPTURES HONGE , UNHE TO SIRF LOAD KRNA HAI LEKIN UNME BHI AISA HIO HOGA KI PUBLIC KE RAG VECTOR DB ME SCRIPTURES HONGE LEKIN JARVIS ME UNKE SAATH AUR BHI JYADA HONGE UNKE SAATH . AUR HAMAR MASTERMIND SIRF JARVIS KO HI MERE PUBLIC KE TEENO TIERS KE BAARE ME PATA HOGA LEKIN PUBLIC KE TEENO TIERS KO JARVIS TIERS KE EXISTANCE KE BAARE ME NHI PATA HOGA.  
+AUR MEMORY GRAPH KO PHASE 6 SE CONNECT KRNA KYUKI YHA PR AGI TRAIN HOGA ,SIMPLE BHASHA ME BOLU TO WO YHA PR GYAANI BANEGA AUR TUM UPAR DEKH CHUKE HO YE PRINCIPLE-
+                    IF QUESTION : FACTUAL --------> VECTOR DB
+                    IF CONCEPTUAL ----------------> MEMORY GRAPH 
+                    IF MIXED ---------------------> BOTH 
+
+yha pr factual aur conceptual ko literally nhi lena hai ki tum coneptual aur factual keywords find kro user ki query me aur us basis pr answer do, yha pr actual me find krna hai ki kaun se query factual hai aur kaun si query conecptual hai.
+
+ISME HAMARA AGI JB MEMORY GRAPH KA USE KREGA TO WO INTELLIGENCE KA USE KREGA TO MEMORY GRAPH KO ISSE CONNECT HONA CHAHIYE
+
+AUR AB BAAT KRTE HAI RAG ME VECTOR DB ME JO SCRIPTURES HONGE , UNHE TO SIRF LOAD KRNA HAI LEKIN UNME BHI AISA HIO HOGA KI PUBLIC KE RAG VECTOR DB ME SCRIPTURES HONGE LEKIN JARVIS ME UNKE SAATH AUR BHI JYADA HONGE UNKE SAATH . AUR HAMAR MASTERMIND SIRF JARVIS KO HI MERE PUBLIC KE TEENO TIERS KE BAARE ME PATA HOGA LEKIN PUBLIC KE TEENO TIERS KO JARVIS TIERS KE EXISTANCE KE BAARE ME NHI PATA HOGA.  
 
 AUR JB HAMARA SB KUCH HO JAAEGA TO BAARE AAYGI "FINETUNING" KI, JISME HUM APNE AGI KO PERSONALITY DENGE JISME HUME USE KISI EK KING YA GURU ,RISHI KI PERSONALITY DAALENGE. 
  ----------------------------------- HAMARA INDIAN-CENTRIC AGI KAISE BANEGA -----------------------
@@ -879,7 +893,7 @@ AUR JB HAMARA SB KUCH HO JAAEGA TO BAARE AAYGI "FINETUNING" KI, JISME HUM APNE A
    BHARTIYA GYAAN :-    (i) ALL HINDU SCRIPTURES ---------> Heavy Training(Phase 6) [MINDSET WESTERN NHI, BHARTIYA HOGA]
 
 agar hum Scriptures sirf RAG me daal denge to Model Wsetern hi rhega, bas Qoutess Indian Honge.lekin mujhe model Indian mindset ka chahiye , isliye agar hum Scriptures Rag ke saath saath Training (phase6) me daalenge to Model Indian sochega, bhale hi topic western hoga
-   ISLIYE RAG ME BHI POORE SCRIPTURES KI PDFs RAHEGI AUR TRAINING ME BHI SAARI SAME PDFs RAHEGI, RAG HAMAR LIBRARAY HAI , PHASE 6 ME TRAINING SE GYAANU BANEGA HAMARA AGI, ISLIYE RAG ME AUR PHASE 6 DONO ME SCRIPTURE HONGE LEKIN PUBLIC AUR JARVIS KE LIYE ALAG ALAG MANAGE HONGE , AUR WO KAISE HONGE YE TUM DEKHO ,MAINE TUMHE REASON BATA HI DIYA KI KYU KRNA HAI.
+ISLIYE RAG ME BHI POORE SCRIPTURES KI PDFs RAHEGI AUR TRAINING ME BHI SAARI SAME PDFs RAHEGI, RAG HAMAR LIBRARAY HAI , PHASE 6 ME TRAINING SE GYAANU BANEGA HAMARA AGI, ISLIYE RAG ME AUR PHASE 6 DONO ME SCRIPTURE HONGE LEKIN PUBLIC AUR JARVIS KE LIYE ALAG ALAG MANAGE HONGE , AUR WO KAISE HONGE YE TUM DEKHO ,MAINE TUMHE REASON BATA HI DIYA KI KYU KRNA HAI.
 
    
 
@@ -887,13 +901,13 @@ TO AB HUM APNE MINI AGI KO BANA RHE TO AUR HUMNE YE LAYER ORDER DECIDE KIYA THA-
 
    
 
-================================================================ 
+===================================================================================================== 
   --------------------------LAYER 3 — KNOWLEDGE SOURCE ROUTING (HEART)---------------------------
-================================================================ 
+====================================================================================================
 
 is layer me main 6 phases add kiye hai jisko main describe nhi kr rha hu bs tumne uska code paste krdeta hu , kyuki main isse phle main tumhe upar ise describe kr chuyka hu jb humne saari layers ko dekha tha ek baar me , to ab ye hai iske phases-
 
-# -------- Phase 3.0 : Question Classification --------
+# -------- LAYER 3 KA Phase 3.0 : Question Classification --------
 class KnowledgeSourceClassifier:
     def classify(self, question: str) -> str:
         q = question.lower()
@@ -908,7 +922,7 @@ class KnowledgeSourceClassifier:
         return "general"
 
 
-# -------- Phase 3.1 : Source Priority Resolution --------
+# -------- LAYER 3 KA Phase 3.1 : Source Priority Resolution --------
 class SourcePriorityResolver:
     def resolve(self, category: str) -> dict:
         if category == "factual":
@@ -923,26 +937,26 @@ class SourcePriorityResolver:
         return {"memory": True, "retrieval": True, "reasoning": True}
 
 
-# -------- Phase 3.2 : Confidence Gating --------
+# --------LAYER 3 KA Phase 3.2 : Confidence Gating --------
 class ConfidenceGate:
     def apply(self, routing: dict, memory_score: float) -> dict:
         if memory_score < 0.4:
             routing["memory"] = False
             routing["reasoning"] = True
         return routing
-# -------- Phase 3.4 : Ambiguity Detection --------
+# -------- LAYER 3 KA Phase 3.4 : Ambiguity Detection --------
 class AmbiguityDetector:
     def detect(self, question: str) -> bool:
         vague_terms = ["something", "things", "stuff", "about", "etc"]
         q = question.lower()
         return any(term in q for term in vague_terms)
-# -------- Phase 3.5 : Source Conflict Resolution --------
+# --------LAYER 3 KA  Phase 3.5 : Source Conflict Resolution --------
 class SourceConflictResolver:
     def resolve(self, routing: dict) -> dict:
         if routing["memory"] and routing["retrieval"]:
             routing["reasoning"] = True
         return routing
-# -------- Phase 3.6 : Hallucination Guard --------
+# -------- LAYER 3 KA Phase 3.6 : Hallucination Guard --------
 class HallucinationGuard:
     def apply(self, routing: dict, confidence: float) -> dict:
         if routing["category"] == "factual" and confidence < 0.3:
@@ -952,7 +966,7 @@ class HallucinationGuard:
         return routing
 
 
-# -------- Phase 3.3 : Final Knowledge Router --------
+# -------- LAYER 3 KA Phase 3.3 : Final Knowledge Router --------
 class KnowledgeRouter:
     def route(self, question: str, memory_score: float = 0.5) -> dict:
         classifier = KnowledgeSourceClassifier()
@@ -971,35 +985,40 @@ class KnowledgeRouter:
             "confidence": memory_score
         }
 
-TO AB HUM APNE MINI AGI KO BANA RHE TO AUR HUMNE YE LAYER ORDER DECIDE KIYA THA- LAYER--->4---->3----->1----->2----->5                       IS ORDER KO FOLLOW KRTE HUE AB HUM AAGE BADHENGE AUR HUMNE LAYER 4 AUR 3 COMPLETE KR LI HAI AUR AB HUM LAYER 1 PAR AA GYE HAI
+TO AB HUM APNE MINI AGI KO BANA RHE TO AUR HUMNE YE LAYER ORDER DECIDE KIYA THA- LAYER--->4---->3----->1----->2----->5                      
+ IS ORDER KO FOLLOW KRTE HUE AB HUM AAGE BADHENGE AUR HUMNE LAYER 4 AUR 3 COMPLETE KR LI HAI AUR AB HUM LAYER 1 PAR AA GYE HAI
   
 
-================================================================ 
+=====================================================================================================
 ------------------------ LAYER 1 INTENT DECOMPOSITION (MULTISTAGE THINKING)---------------------
-================================================================ 
+======================================================================================================
 
 CORE PURPOSE :-
                 User ke  raw sentence ko break krke ye banana :- Asal Intent, Hidden goals, Required depth, Internal expanded queries,  Reasoning plan (but not answer)
-                                                           ANSWER abhi nhi --> Sochne taiyaari  kr rhe abhi
-LAYER 1 KA PHASE 1.0 RAW QUERY CAPTURE :-   User ne jo bola exact, bina interpretation
+                                  ANSWER abhi nhi --> Sochne taiyaari  kr rhe abhi
+
+------------------------------LAYER 1 KA PHASE 1.0 RAW QUERY CAPTURE--------------------------------   User ne jo bola exact, bina interpretation
 
 LAYER 1 KA PHASE 1.1 LINGUISTIC NORMALIZATION :- User ko language broken ho skta hai, emotional ho skta hai, shorthand ho skta hai.
-                                              is phase me :- (i)   normalize
-                                                                      (ii)  noise hatao 
-                                                                     (iii) grammer perfect krne ke liye try (internally) 
-LAYER 1 KA PHASE 1.2 INTENT TYPE DETECTION (THINKING TYPE) :-
-                           ChatGpt phle ye decide krta hai :- (i) Factual ? (ii) Conceptual ? (iii) ethical ? (iv) philosophical ? (v) Procedual? (vi) mixed?
-                                                            ye routing nhi hai ,thinking style hai .
-LAYER 1 KA PHASE 1.3 GOAL DECOMPOSITION (HEART OF LAYER 1) :- ChatGpt ek question ko multiple invisible goals me break krta hai
+                                is phase me :- (i)   normalize
+                                               (ii)  noise hatao 
+                                               (iii) grammer perfect krne ke liye try (internally) 
 
-LAYER 1 KA PHASE 1.4 QUERY EXPANSION (CHATGPT STYLE):-    ChatGpt internally expanded semantic query banata hai .
+-------------------------------LAYER 1 KA PHASE 1.2 INTENT TYPE DETECTION (THINKING TYPE)---------
+ChatGpt phle ye decide krta hai :- (i) Factual ? (ii) Conceptual ? (iii) ethical ? (iv) philosophical ? (v) Procedual? (vi) mixed?
+ye routing nhi hai ,thinking style hai .
 
-LAYER 1 KA PHASE 1.5 REASONING DEPTH ESTIMATION :-
-                               ChatGpt decide krt  :- Short Answer chalega, ya heavy, multi-layer reasoning chahiye ?
+----------------------LAYER 1 KA PHASE 1.3 GOAL DECOMPOSITION (HEART OF LAYER 1)---------------------- ChatGpt ek question ko multiple invisible goals me break krta hai
 
-LAYER 1 KA PHASE 1.6 KNOWLEDGE DOMAIN MAPPING (VERDICT MODERN) :-
-                               hamare vision ke hisaab se Scriptures, Science, Ethics, Philosophy, Technology
-LAYER 1 KA PHASE 1.7 INTENT BUNDLE (FINAL OUTPUT) :- LAYER 1 ka output ek object hota hai, jo saari layers use krti
+LAYER 1 KA PHASE 1.4 QUERY EXPANSION (CHATGPT STYLE):- ChatGpt internally expanded semantic query banata hai .
+
+-----------------------LAYER 1 KA PHASE 1.5 REASONING DEPTH ESTIMATION--------------------------------
+ ChatGpt decide krt  :- Short Answer chalega, ya heavy, multi-layer reasoning chahiye ?
+
+-----------------------LAYER 1 KA PHASE 1.6 KNOWLEDGE DOMAIN MAPPING (VERDICT MODERN)-----------------
+hamare vision ke hisaab se Scriptures, Science, Ethics, Philosophy, Technology etc
+
+-------------------------LAYER 1 KA PHASE 1.7 INTENT BUNDLE (FINAL OUTPUT)---------------------------- LAYER 1 ka output ek object hota hai, jo saari layers use krti
 
 AB HAMARI YE LAYER BHI COMPLETE HO GYI AUR AB HUME APNE LAYERS KE ORDER FOLLOW KRTE HUE AAGE BADHTE HAI , AUR YE THA HAMRA LAYERS KA ORDER - LAYER---> 4----> 3----->1----->2----->5
 
@@ -1007,43 +1026,55 @@ TO IS ORDER KE HISAAB SE HUM LAYER 4,3 AUR 1 COMPLETE KR CHUKE HAI AUR AB HUM LA
 
    
 
-================================================================ 
+================================================================================================== 
 --------------------------------- LAYER 2 ADAPTIVE QUERY EXPANSION (DYNAMIC) ---------------------- 
-================================================================ 
+================================================================================================ 
 
 ye normal "QUERY EXPANSION" nhi hai. ye static synonym replace nhi krta. Ye decision-based, Context-Aware, Intent- driven layer hai. Jaise ChatGpt karta hai lekin hum ise aur heavy bana rhe hai.
 
-LAYER 2 KA PHASE 2.1 INTENT-WISE QUERY BRANCHING :-
-                                   KAAM :- har intent ke liye alag query path banana. yhi se system smart lgta hai.
-LAYER 2 KA PHASE 2.2 QUERY GRANULARITY DECISION :-
-                                         HAR INTENT KE LIYE DECIDE HOTA HAI:- (i)   Narrow :- exact facts, definitions
-                                                                                                               (ii)  Broad :-  Landscape Comparisons 
-                                                                                                             (iii) Abstract :- Philosophy, theory, future 
+-----------------------------LAYER 2 KA PHASE 2.1 INTENT-WISE QUERY BRANCHING-------------------------
+KAAM :- har intent ke liye alag query path banana. yhi se system smart lgta hai.
 
-LAYER 2 KA PHASE 2.3 DYNAMIC QUERY SHAPE GENERATOR :- 
-                                  yahaan actually query forms bante hai:- (i) Declaration (ii) Exploratory (iii) Hypothetical (iv) Comparative (v) Causal ("Why/How)
-                                                         ye phase random nhi hota, decision-based hota hai.
+------------------------------LAYER 2 KA PHASE 2.2 QUERY GRANULARITY DECISION--------------------------
+HAR INTENT KE LIYE DECIDE HOTA HAI:- (i)   Narrow :- exact facts, definitions
+                                     (ii)  Broad :-  Landscape Comparisons 
+                                     (iii) Abstract :- Philosophy, theory, future 
 
-LAYER 2 KA PHASE 2.4 ABSTRACT LEVEL MODULATOR :- 
-                                 Same intent ko multiple abstract levels pr query krta hai.:- (i)   Concrete (facts,data)
-                                                                                              (ii)  Conceptual(models,theories)
-                                                                                              (iii) Meta (ethics, philosophy)
-                                                     ChatGpt internally ye hi krta hai, lekin hum ise explicit bana rhe hai.
+--------------------------------LAYER 2 KA PHASE 2.3 DYNAMIC QUERY SHAPE GENERATOR------------------- 
+yahaan actually query forms bante hai:- (i)   Declaration
+                                        (ii)  Exploratory
+                                        (iii) Hypothetical 
+                                        (iv)  Comparative 
+                                        (v)   Causal ("Why/How)
 
-LAYER 2 KA PHASE 2.5 MEMORY-AWARE QUERY PRUNING(LAYER 4 HOOK):- 
-                                 Layer 4 se check hota hai:- (i)  kya ye knowledge already store hai?
-                                                             (ii) kya repeat query waste hoti?
-                                 RESULT :- (i) Kuch question drop (ii) kuch Merge (iii) kuch deeper
-                                           isse system over search nhi krta
+ye phase random nhi hota, decision-based hota hai.
 
-LAYER 2 KA PHASE 2.6 QUERY PRIORITY & BUDGET ALLOCATION :-
-                                sab Question equal nhi hote ,isliye System decide karta hai :- (i) Kaun Phle? (ii) Kaun Shallow? (iii) Kaun Deep?
-                                                                                    Factors :- (i)   intent importance
-                                                                                                    (ii)  user mode (public/Jarvis) 
-                                                                                                    (iii) cognitive budget 
+-------------------------------------LAYER 2 KA PHASE 2.4 ABSTRACT LEVEL MODULATOR------------------- 
+Same intent ko multiple abstract levels pr query krta hai.:- (i)   Concrete (facts,data)
+                                                             (ii)  Conceptual(models,theories)
+                                                             (iii) Meta (ethics, philosophy)
+        
+ChatGpt internally ye hi krta hai, lekin hum ise explicit bana rhe hai.
 
-LAYER 2 KA PHASE 2.7 FINAL QUERY BUNDLE OUTPUT :- 
-                               final clean output jo layer 3 ko milega:- ab layer 3 blind search nhi karta, wo intelligent routing karta hai
+----------------------------------LAYER 2 KA PHASE 2.5 MEMORY-AWARE QUERY PRUNING(LAYER 4 HOOK)---- 
+Layer 4 se check hota hai:- (i)  kya ye knowledge already store hai?
+                            (ii) kya repeat query waste hoti?
+
+RESULT :- (i) Kuch question drop 
+          (ii) kuch Merge 
+          (iii) kuch deeper isse system over search nhi krta
+
+------------------------------LAYER 2 KA PHASE 2.6 QUERY PRIORITY & BUDGET ALLOCATION-----------------
+sab Question equal nhi hote ,isliye System decide karta hai :- (i) Kaun Phle? 
+                                                               (ii) Kaun Shallow? 
+                                                               (iii) Kaun Deep?
+
+Factors :- (i)   intent importanc
+           (ii)  user mode (public/Jarvis) 
+           (iii) cognitive budget 
+
+-----------------------------LAYER 2 KA PHASE 2.7 FINAL QUERY BUNDLE OUTPUT-------------------------- 
+final clean output jo layer 3 ko milega:- ab layer 3 blind search nhi karta, wo intelligent routing karta hai
 
   
                                                                                                     
@@ -1052,15 +1083,16 @@ AB HAMARI YE LAYER BHI COMPLETE HO GYI AUR AB HUME APNE LAYERS KE ORDER FOLLOW K
 TO IS ORDER KE HISAAB SE HUM LAYER 4,3,1 AUR 2 COMPLETE KR CHUKE HAI AUR AB HUM LAYER 1 PR CHALTE HAI IS ORDER KE HISAAB SE, JO KI HAMARI LAST LAYER HAI.
 
 
-================================================================ 
+======================================================================================================
 ------------------------------------- LAYER 5 REASONING & SYNTHESIS -----------------------------------
-================================================================ 
+======================================================================================================
 
-                                              Final/Last Layer = Intelligent deikhne waali jgh
+ Final/Last Layer = Intelligent deikhne waali jgh
 
-PURPOSE :- YE LAYER TAB ACTIVE HOTI HAI, JAB :- (i)   Vector DB kuch bolta hai, Memory Grapgh kuch aur, 
-                                                                                        (ii)  World Model assumptions alag ho,  
-                                                                                        (iii) Reasoning Output imperfect ho 
+PURPOSE :- YE LAYER TAB ACTIVE HOTI HAI, JAB :- 
+                                               (i)   Vector DB kuch bolta hai, Memory Grapgh kuch aur, 
+                                               (ii)  World Model assumptions alag ho,  
+                                               (iii) Reasoning Output imperfect ho 
 
 Layer 5 reconcile karti hai, Contradictions solve krti hai, Final Structure answer banati hai.
 
@@ -1070,7 +1102,7 @@ YHI PR SYSTEM CHATGPT SE ALAG DIKHTA HAI - YE HRE ISKE SAARE PHASES-
 #==========LAYER 5 : REASONING & SYNTHESIS =================
 #===========================================================
 
-#............Phase 5.1 - Evidence Aggregation Engine........
+#............LAYER 5 KA Phase 5.1 - Evidence Aggregation Engine........
 class EvidenceAggregator:
     def collect(
         self,
@@ -1088,7 +1120,7 @@ class EvidenceAggregator:
             "agency": agency_result
         }
 
-#............Phase 5.2 - Contradiction Detection Engine...............
+#............LAYER 5 KA Phase 5.2 - Contradiction Detection Engine...............
 class ContradictionDetector:
     def detect(self, evidence_bundle):
         conflicts = []
@@ -1110,7 +1142,7 @@ class ContradictionDetector:
             "conflicts": conflicts
         }
 
-#................Phase 5.3 - Source Trust Scoring............
+#................LAYER 5 KA Phase 5.3 - Source Trust Scoring............
 class SourceTrustScorer:
     def score(self, evidence_bundle, cognitive_profile):
         score = {
@@ -1127,7 +1159,7 @@ class SourceTrustScorer:
 
         return score
 
-#................Phase 5.4 - Reconcillation Engine...................
+#................LAYER 5 KA Phase 5.4 - Reconcillation Engine...................
 class ReconciliationEngine:
     def reconcile(self, evidence_bundle, conflicts, trust_scores):
         if not conflicts["has_conflict"]:
@@ -1139,7 +1171,7 @@ class ReconciliationEngine:
 
         return "Re-evaluated answer based on stronger evidence"
 
-#.............Phase 5.5 - Answer Structuring Engine..................
+#.............LAYER 5 KA Phase 5.5 - Answer Structuring Engine..................
 class AnswerStructurer:
     def structure(self, resolved_answer, intent_state):
         if intent_state == "research":
@@ -1154,7 +1186,7 @@ class AnswerStructurer:
 """
         return resolved_answer
 
-#................Phase 5.6 - Self-Judgement Engine.........
+#................LAYER 5 KA Phase 5.6 - Self-Judgement Engine.........
 class SelfJudgeEngine:
     def evaluate(self, answer, cognitive_profile):
         score = 0.7
@@ -1166,7 +1198,7 @@ class SelfJudgeEngine:
             "acceptable": score >= 0.75
         }
 
-#................Phase 5.7 - Final Synthesis Engine.............
+#................LAYER 5 KA Phase 5.7 - Final Synthesis Engine.............
 class FinalSynthesisEngine:
     def synthesize(
         self,
