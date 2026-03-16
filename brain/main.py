@@ -2125,47 +2125,129 @@ if ENABLE_TRAINING:
 
 # -------- Phase 3.0 : Question Classification --------
 class KnowledgeSourceClassifier:
-    def classify(self, question: str) -> str:
-        q = question.lower()
+    def classify(self, layer1_bundle: dict) -> str:
+        """
+        Language-agnostic classification.
+        No hardcoded strings — numeric depth + spaCy signals + Layer 1 sub_goals.
+        """
+        DEPTH_INDEX = {
+            "shallow": 0, "normal": 1, "moderate": 2,
+            "deep": 3, "very_deep": 4, "ultra_deep": 5
+        }
 
-        if any(x in q for x in ["how", "steps", "process", "method"]):
+        required_depth   = layer1_bundle.get("required_depth", "normal")
+        depth_idx        = DEPTH_INDEX.get(required_depth, 1)
+        normalized_query = layer1_bundle.get("normalized_query", "")
+        sub_goals        = layer1_bundle.get("sub_goals", [])  # Layer 1 output — complexity signal
+
+        # spaCy — language-agnostic linguistic signals
+        doc          = _NLP(normalized_query)
+        entity_count = len(doc.ents)
+        verb_count   = sum(1 for t in doc if t.pos_ == "VERB")
+        noun_count   = sum(1 for t in doc if t.pos_ == "NOUN")
+
+        # sub_goals count → complexity signal from Layer 1
+        is_complex = len(sub_goals) >= 3  # zyada goals = mixed/complex query
+
+        if depth_idx >= 3:
+            return "conceptual"
+
+        if depth_idx <= 1:
+            if entity_count >= 2:
+                return "factual"
+            return "general"
+
+        # moderate depth — sub_goals + POS signals
+        if is_complex:
+            return "mixed"        # Layer 1 ne multiple goals diye → dono sources chahiye
+        if verb_count > noun_count:
             return "procedural"
-        if any(x in q for x in ["who", "when", "where", "date"]):
+        if entity_count >= 2:
             return "factual"
-        if any(x in q for x in ["why", "explain", "theory", "philosophy"]):
+        if noun_count > 0:
             return "conceptual"
 
         return "general"
-
 
 # -------- Phase 3.1 : Source Priority Resolution --------
 class SourcePriorityResolver:
     def resolve(self, category: str) -> dict:
         if category == "factual":
-            return {"memory": True, "retrieval": True, "reasoning": False}
+            # Blueprint: FACTUAL → VECTOR DB only
+            # Memory Graph factual questions ke liye nahi — sirf text recall chahiye
+            return {"memory": False, "retrieval": True, "reasoning": False}
 
         if category == "procedural":
+            # Process/steps → retrieval se steps milenge + reasoning se execute hoga
             return {"memory": False, "retrieval": True, "reasoning": True}
 
         if category == "conceptual":
+            # Blueprint: CONCEPTUAL → MEMORY GRAPH
+            # Meaning + relations chahiye — Memory Graph primary
             return {"memory": True, "retrieval": False, "reasoning": True}
 
+        if category == "mixed":
+            # Blueprint: MIXED → BOTH
+            return {"memory": True, "retrieval": True, "reasoning": True}
+
+        # general fallback
         return {"memory": True, "retrieval": True, "reasoning": True}
 
 
 # -------- Phase 3.2 : Confidence Gating --------
 class ConfidenceGate:
     def apply(self, routing: dict, memory_score: float) -> dict:
+        """
+        Sirf memory gate karo agar confidence kam hai.
+        Reasoning pe haath mat lagao — wo Phase 3.1 aur 3.5 ka kaam hai.
+        """
+        # None guard
+        if memory_score is None:
+            memory_score = 0.5
+
         if memory_score < 0.4:
             routing["memory"] = False
-            routing["reasoning"] = True
+            # reasoning touch nahi karte — Phase 3.1 ne already sahi set kiya hai
+
         return routing
 # -------- Phase 3.4 : Ambiguity Detection --------
 class AmbiguityDetector:
-    def detect(self, question: str) -> bool:
-        vague_terms = ["something", "things", "stuff", "about", "etc"]
-        q = question.lower()
-        return any(term in q for term in vague_terms)
+    def detect(self, layer1_bundle: dict) -> bool:
+        """
+        Language-agnostic ambiguity detection.
+        No hardcoded English strings — spaCy + Layer 1 numeric signals.
+
+        Vague signals:
+          - depth shallow     → query surface level hai
+          - sub_goals ≤ 1     → Layer 1 kuch decompose nahi kar paya → vague
+          - entity_count == 0 → koi specific reference nahi
+          - noun_count == 0   → kuch concretely kaha hi nahi
+
+        3+ signals → ambiguous
+        """
+        DEPTH_INDEX = {
+            "shallow": 0, "normal": 1, "moderate": 2,
+            "deep": 3, "very_deep": 4, "ultra_deep": 5
+        }
+
+        required_depth   = layer1_bundle.get("required_depth", "normal")
+        depth_idx        = DEPTH_INDEX.get(required_depth, 1)
+        sub_goals        = layer1_bundle.get("sub_goals", [])
+        normalized_query = layer1_bundle.get("normalized_query", "")
+
+        # spaCy — language-agnostic
+        doc          = _NLP(normalized_query)
+        entity_count = len(doc.ents)
+        noun_count   = sum(1 for t in doc if t.pos_ == "NOUN")
+
+        # Numeric vague signals — no English keywords
+        is_shallow    = depth_idx <= 1
+        few_sub_goals = len(sub_goals) <= 1
+        no_entities   = entity_count == 0
+        no_nouns      = noun_count == 0
+
+        vague_score = sum([is_shallow, few_sub_goals, no_entities, no_nouns])
+        return vague_score >= 3
 # -------- Phase 3.5 : Source Conflict Resolution --------
 class SourceConflictResolver:
     def resolve(self, routing: dict) -> dict:
@@ -2174,31 +2256,80 @@ class SourceConflictResolver:
         return routing
 # -------- Phase 3.6 : Hallucination Guard --------
 class HallucinationGuard:
-    def apply(self, routing: dict, confidence: float) -> dict:
-        if routing["category"] == "factual" and confidence < 0.3:
-            routing["memory"] = False
+    def apply(self, routing: dict, confidence: float, category: str) -> dict:
+        """
+        Factual + low confidence → sirf retrieval.
+        Memory aur reasoning band — hallucination risk minimize karo.
+        category alag se pass — routing dict mein nahi hota.
+        """
+        if confidence is None:
+            confidence = 0.5
+
+        if category == "factual" and confidence < 0.3:
+            routing["memory"]    = False
             routing["reasoning"] = False
             routing["retrieval"] = True
+
         return routing
 
 
 # -------- Phase 3.3 : Final Knowledge Router --------
 class KnowledgeRouter:
-    def route(self, question: str, memory_score: float = 0.5, cognitive_profile: dict = None) -> dict:
-        classifier = KnowledgeSourceClassifier()
-        resolver = SourcePriorityResolver()
-        gate = ConfidenceGate()
+    def route(
+        self,
+        question: str,
+        memory_score: float = 0.5,
+        cognitive_profile: dict = None,
+        layer1_bundle: dict = None        # Layer 1 bridge — classify ke liye
+    ) -> dict:
+        """
+        Layer 3 ka orchestrator.
+        Phase 3.0 → 3.1 → 3.2 → 3.4 → 3.5 → 3.6 sab yahan se chalte hain.
+        """
+        classifier       = KnowledgeSourceClassifier()
+        resolver         = SourcePriorityResolver()
+        gate             = ConfidenceGate()
+        ambiguity_det    = AmbiguityDetector()
+        conflict_res     = SourceConflictResolver()
+        hallucination_gd = HallucinationGuard()
 
-        category = classifier.classify(question)
+        bundle  = layer1_bundle or {}
+        profile = cognitive_profile or {}
+
+        # Phase 3.0 — classify (language-agnostic, Layer 1 bundle se)
+        category = classifier.classify(bundle)
+
+        # Phase 3.1 — source priority
         routing = resolver.resolve(category)
+
+        # Phase 3.2 — confidence gate
         routing = gate.apply(routing, memory_score)
 
+        # Phase 3.4 — ambiguity detection (layer1_bundle se — language agnostic)
+        is_ambiguous = ambiguity_det.detect(bundle)
+        if is_ambiguous:
+            routing["retrieval"] = True
+            routing["reasoning"] = True
+
+        # Phase 3.5 — source conflict resolution
+        routing = conflict_res.resolve(routing)
+
+        # Phase 3.6 — hallucination guard
+        routing = hallucination_gd.apply(routing, memory_score, category)
+
+        # cognitive_profile — billing gates apply (use_emergent_concepts, deep_reasoning)
+        if profile.get("deep_reasoning"):
+            routing["reasoning"] = True
+        if profile.get("use_emergent_concepts"):
+            routing["memory"] = True
+
         return {
-            "use_memory": routing["memory"],
+            "use_memory":    routing["memory"],
             "use_retrieval": routing["retrieval"],
             "use_reasoning": routing["reasoning"],
-            "category": category,
-            "confidence": memory_score
+            "category":      category,
+            "confidence":    memory_score,
+            "is_ambiguous":  is_ambiguous
         }
 
 
@@ -2632,6 +2763,8 @@ class MemoryAwareQueryPruner:
         depth_levels = ["shallow", "normal", "moderate", "deep", "very_deep", "ultra_deep"]
         required_depth = layer1_bundle.get("required_depth", "shallow")
         depth_idx = depth_levels.index(required_depth) if required_depth in depth_levels else 0
+        is_deep = depth_idx >= 3  # deep, very_deep, ultra_deep — billing se aaya
+
 
         pruned = []
         seen   = set()
@@ -2655,9 +2788,12 @@ class MemoryAwareQueryPruner:
             if score > 0.85:
                 continue
 
-            # Deeper — score low + depth deep = naya topic, zaroori hai
-            # Blueprint: "kuch deeper — isse system over search nhi krta"
-            # Sirf rakhna hai — koi English string append nahi
+            # Deeper — Blueprint: "score low + required_depth deep = naya topic, rakhna zaroori"
+            if is_deep and score < 0.3:
+                pruned.append(q)
+                continue
+
+            # Normal — drop nahi, deeper nahi — as is rakhna hai
             pruned.append(q)
 
         # Blueprint: fallback — kuch to dena hai Layer 3 ko
@@ -2901,14 +3037,7 @@ class AdaptiveQueryExpansionEngine:
     Koi hardcoded English nahi.
     """
 
-    def run(
-        self,
-        question: str,
-        layer1_bundle: dict,
-        intent_state,
-        cognitive_profile: dict,
-        memory_graph
-    ) -> list:
+    def run(self, question: str,layer1_bundle: dict, cognitive_profile: dict, memory_graph ) -> list:
         brancher          = IntentQueryBrancher()
         granularity_decider = QueryGranularityDecider()
         shape_gen         = QueryShapeGenerator()
@@ -3216,7 +3345,7 @@ async def main(
             - max_tokens: int  
     """  
     # Extract mode from config  
-    tier = config["tier"]  
+    # tier = config["tier"]  
     # mode = "jarvis" if tier == "jarvis" else "public"
 
 
@@ -3231,7 +3360,7 @@ async def main(
 
     chain = create_chain(llm)
 
-    question = "How to report The Prince ?"
+    # question = "How to report The Prince ?"=======================================
 
     memory_layer = conversation_memory 
     if conversation_id is None:
@@ -3289,12 +3418,21 @@ async def main(
     )
     
     logging.info(f"[Cognitive Route] → {cognitive_route}")
-    
+
+    #-------------------------------------------------------------
     world_state = {
         "domain": layer1_bundle.get("domains", ["general"])[0],
-        "human_factor": "ethics" in layer1_bundle.get("domains", []),
-        "ethical_weight": "high" if layer1_bundle.get("intent_type") in ["ethical", "philosophical"] else "low"
+        # Layer 1 ka domains list — agar koi bhi domain detect hua = human context possible
+        "human_factor": len(layer1_bundle.get("domains", [])) > 0,
+        # required_depth se decide — string label nahi
+        "ethical_weight": "high" if layer1_bundle.get("required_depth") in ["deep", "very_deep", "ultra_deep"] else "low"
     }
+    
+    # world_state = {
+    #     "domain": layer1_bundle.get("domains", ["general"])[0],
+    #     "human_factor": "ethics" in layer1_bundle.get("domains", []),
+    #     "ethical_weight": "high" if layer1_bundle.get("intent_type") in ["ethical", "philosophical"] else "low"
+    # }
    
     # ================================
     # LAYER 2B — COGNITIVE LOAD CONTROLLER
@@ -3338,9 +3476,8 @@ async def main(
     adaptive_queries = adaptive_query_engine.run(
         question=question,
         layer1_bundle=layer1_bundle,
-        intent_state=intent_state,
         cognitive_profile=cognitive_profile,
-        memory_graph=memory_graph   # Layer 4 hook
+        memory_graph=memory_graph_full   # Layer 4 hook
     )
     
     # 🔒 Layer-2 Production Lock
@@ -3356,14 +3493,6 @@ async def main(
     logging.info(f"[Layer2→Layer3] Combined Query → {adaptive_query_text}")
     query_count = len(adaptive_queries)
     logging.info(f"[Layer2] final query_count={query_count}")
-
-
-
-    # 🔁 Layer-2 → Cognitive Sync
-    if cognitive_profile.get("deep_reasoning"):
-        cognitive_profile["max_docs"] = max(
-            cognitive_profile.get("max_docs", 6), 8
-        )
 
     # ================================
     # LAYER 3A — WORLD MODEL
@@ -3436,10 +3565,11 @@ async def main(
     knowledge_route = router3.route(
         question=(
             mutated_question + " " +
-            " ".join(layer1_bundle.get("expanded_queries", [])) + " " + adaptive_query_text  # 👈 VERY IMPORTANT
+            " ".join(layer1_bundle.get("expanded_queries", [])) + " " + adaptive_query_text # 👈 VERY IMPORTANT
         ),
-        memory_score=cognitive_profile.get("confidence", 0.6),
-        cognitive_profile=cognitive_profile
+        memory_score=memory_graph_full.estimate_relevance(question),  # actual memory relevance
+        cognitive_profile=cognitive_profile,
+        layer1_bundle=layer1_bundle                                    # Layer 1 bridge
     )
     
     final_route = (
