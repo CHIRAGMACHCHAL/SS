@@ -348,6 +348,9 @@ UPAR KA BRAIN :- Decision Logic, Memory Routing, Tool Usage, Retrieval selection
 ye decide krta hai :- Model ko kab bulana hai, kis data ke saath bulana hai , kitni baar bulana hai, kaun sa model use krna hai
 CHATGPT KA MAGIC YHI HOTA HI WEIGHTS ME NHI
 
+---------------------------LAYER 4 KA Phase 2.0 "Implicit Memory "-------------------------------------
+
+
 PHASE 2 ko mature banane ka step :- (i)   isse LLM se extra calls nhi
                 		            (ii)  heavy logic nhi 
                                     (iii) sirf structure/public teir me 2.1 rkhenge lekin Jarvis me haataenge 

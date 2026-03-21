@@ -141,53 +141,70 @@ class MemoryGraphAdapter:
 # PHASE 2: IMPLICIT / EMERGENT MEMORY
 # =========================
 
-def implicit_memory_retrieval(vector_db, question, k=12):
+def implicit_memory_retrieval(vector_db, question, cognitive_profile=None, k=12):
     """
     Phase 2.0 Implicit Memory.
     Blueprint: 'Embeddings similarity se memory emerge hoti hai'
     - No hardcoded concepts
     - No word length filters
+    - No English punctuation assumption
     - Semantic relevance = embedding cosine similarity
-    - Top chunks ARE the emergent memory — their semantic proximity IS the concept
-    - Embedding similarity drives memory
-    - Concepts emerge from retrieved chunks
+    - Concepts emerge from retrieved chunks via cross-chunk similarity
     """
 
-    # Step 1: Raw semantic retrieval via embedding similarity (Layer 4 hook)
+    # Billing ka max_docs respect karo — hardcoded k nahi
+    if cognitive_profile:
+        k = cognitive_profile.get("max_docs", k)
+
+    # Step 1: Raw semantic retrieval
     docs = vector_db.similarity_search(question, k=k)
     if not docs:
         return [], []
 
-    # Step 2: Emergent concept extraction — semantic, not word-count
-    # Blueprint: "Words se emergent concepts nikalta hai"
-    # Real emergence = which retrieved chunks are MOST semantically close to each other
-    # Cross-chunk cosine similarity se cluster nikalo — common semantic core = concept
+    # Step 2: Emergent concept extraction
     try:
-        encoder = SentenceTransformer(EMBEDDING_MODEL)
-        contents = [doc.page_content[:300] for doc in docs]  # first 300 chars per chunk
-        chunk_embeddings = encoder.encode(contents, normalize_embeddings=True)
+        # Global _EMBEDDER use karo — har call pe naya load nahi
+        contents = []
+        for doc in docs:
+            # spaCy sentence boundary — language-agnostic, no [:300] slice
+            nlp_doc = _NLP(doc.page_content)
+            sents = list(nlp_doc.sents)
+            # Pehli meaningful sentence lo — empty nahi
+            first = next(
+                (s.text.strip() for s in sents if s.text.strip()),
+                doc.page_content[:150]  # fallback sirf agar spaCy kuch na de
+            )
+            contents.append(first)
+
+        chunk_embeddings = _EMBEDDER.encode(contents, normalize_embeddings=True)
 
         # Cosine similarity matrix
         sim_matrix = np.dot(chunk_embeddings, chunk_embeddings.T)
 
         # Most connected chunk = emergent concept hub
-        connectivity = sim_matrix.sum(axis=1)
-        top_indices = np.argsort(connectivity)[::-1][:4]  # top 4 concept hubs
+        connectivity    = sim_matrix.sum(axis=1)
+        top_indices     = np.argsort(connectivity)[::-1][:4]
 
-        # Each hub chunk ka first sentence = concept label
         emergent_concepts = []
         for idx in top_indices:
-            first_sentence = contents[idx].split(".")[0].strip()
-            if first_sentence and first_sentence not in emergent_concepts:
-                emergent_concepts.append(first_sentence)
+            concept = contents[idx]
+            if concept and concept not in emergent_concepts:
+                emergent_concepts.append(concept)
 
     except Exception:
-        # Fallback: retrieved docs ki ordering hi concept emergence hai
-        emergent_concepts = [
-            doc.page_content.split(".")[0].strip()
-            for doc in docs[:4]
-            if doc.page_content.strip()
-        ]
+        # Fallback — spaCy sentence first, no English split
+        emergent_concepts = []
+        for doc in docs[:4]:
+            if not doc.page_content.strip():
+                continue
+            nlp_doc = _NLP(doc.page_content)
+            sents   = list(nlp_doc.sents)
+            first   = next(
+                (s.text.strip() for s in sents if s.text.strip()),
+                doc.page_content[:150]
+            )
+            if first and first not in emergent_concepts:
+                emergent_concepts.append(first)
 
     return docs, emergent_concepts
 
@@ -198,69 +215,103 @@ def implicit_memory_retrieval(vector_db, question, k=12):
 
 
 class CognitiveRouter:
+
     def route(self, question: str) -> str:
-        q = question.lower()
+        """
+        Fallback router — jab Layer 1 context available nahi.
+        spaCy signals se route decide — no English keywords.
+        """
+        doc = _NLP(question)
 
-        if self.is_memory_query(q):
+        if self.is_memory_query(doc):
             return "memory"
-
-        if self.is_fact_query(q):
+        if self.is_fact_query(doc):
             return "retrieval"
-
-        if self.is_reasoning_query(q):
+        if self.is_reasoning_query(doc):
             return "reasoning"
 
         return "direct"
-    
-    def route_with_context(self, *, question, intent, domains, required_depth) -> str:
+
+    def route_with_context(
+        self, *, question, intent, domains, required_depth, layer1_bundle=None
+    ) -> str:
         """
-        FULL cognitive routing (heavy, non-lite)
+        Full cognitive routing — Layer 1 numeric signals se.
+        Blueprint: "Heavy logic kam, Control zyada"
+        Koi string label match nahi — pure computed signals.
         """
-        # Layer 1 ke exact intent values
-        if intent in {"research", "invention"}:
-            primary_route = "reasoning"
-        elif intent in {"factual", "information"}:
-            primary_route = "retrieval"
-        elif intent in {"planning", "analysis", "ethical", "philosophical", "conceptual"}:
-            primary_route = "reasoning"
-        elif intent in {"execution"}:
-            primary_route = "reasoning"   # execution = step-by-step = reasoning needed
-        elif intent in {"mixed"}:
-            primary_route = "reasoning"
-        else:
-            primary_route = "retrieval"
+        DEPTH_INDEX = {
+            "shallow": 0, "normal": 1, "moderate": 2,
+            "deep": 3, "very_deep": 4, "ultra_deep": 5
+        }
+        depth_idx = DEPTH_INDEX.get(required_depth, 1)
+        bundle    = layer1_bundle or {}
+        sub_goals = bundle.get("sub_goals", [])
 
-        # Layer 1 ke exact domain names
-        if domains:
-            if "scriptural" in domains or "philosophy" in domains:
-                primary_route = "reasoning"
-            elif "scientific" in domains or "technology" in domains:
-                if primary_route == "retrieval":
-                    primary_route = "reasoning"  # science = hybrid needs reasoning
+        # Depth — numeric — deep/very_deep/ultra_deep sab cover
+        if depth_idx >= 3:
+            return "reasoning"
 
-        # Depth modulation
-        if required_depth in ["deep", "very_deep"]:
-            primary_route = "reasoning"
+        # sub_goals count — Layer 1 ka computed complexity signal
+        if len(sub_goals) >= 3:
+            return "reasoning"
 
-        if not primary_route:
-            primary_route = self.route(question)
+        # Domains count — multiple domains = cross-domain = reasoning
+        if len(domains) >= 2:
+            return "reasoning"
 
-        return primary_route
+        # Shallow + single domain + few goals = retrieval
+        if depth_idx <= 1 and len(domains) <= 1 and len(sub_goals) <= 1:
+            return "retrieval"
 
-    def is_memory_query(self, q):
-        return any(x in q for x in [
-            "yaad", "pehle", "tumne kaha", "memory", "earlier"
+        # Fallback — spaCy se decide
+        return self.route(question)
+
+    def is_memory_query(self, doc) -> bool:
+        """
+        Past context reference detect karo.
+        spaCy signals — language agnostic.
+        Past tense verb + temporal entity = memory reference.
+        """
+        has_past_verb = any(
+            token.morph.get("Tense") == ["Past"]
+            for token in doc
+        )
+        has_time_entity = any(
+            ent.label_ in ["DATE", "TIME"]
+            for ent in doc.ents
+        )
+        return has_past_verb and has_time_entity
+
+    def is_fact_query(self, doc) -> bool:
+        """
+        Factual query detect karo.
+        spaCy NER — language agnostic.
+        Entity-heavy + noun dominant = factual.
+        """
+        entity_count = len([
+            ent for ent in doc.ents
+            if ent.label_ in ["PERSON", "ORG", "GPE", "LOC", "DATE", "NORP"]
         ])
+        verb_count = sum(1 for t in doc if t.pos_ == "VERB")
+        noun_count = sum(1 for t in doc if t.pos_ == "NOUN")
 
-    def is_fact_query(self, q):
-        return any(x in q for x in [
-            "what is", "who", "when", "define", "list"
-        ])
+        return entity_count >= 2 or (noun_count > verb_count and entity_count >= 1)
 
-    def is_reasoning_query(self, q):
-        return any(x in q for x in [
-            "why", "how", "explain", "kaise", "kyu"
-        ])
+    def is_reasoning_query(self, doc) -> bool:
+        """
+        Reasoning/explanation query detect karo.
+        spaCy dep_ — language agnostic.
+        Causal/subordinate clause = reasoning needed.
+        """
+        has_causal = any(
+            token.dep_ in ["advcl", "mark", "csubj"]
+            for token in doc
+        )
+        verb_count   = sum(1 for t in doc if t.pos_ == "VERB")
+        entity_count = len(doc.ents)
+
+        return has_causal or (verb_count >= 2 and entity_count == 0)
 
 
 def memory_lookup(vector_db, question, k=6):
@@ -981,154 +1032,147 @@ class SelfConfidenceEngine:
 # =========================
 
 class CognitiveLoadController:
-    def decide(self, route: str, config: dict, world_state: dict, intent: dict | None = None, required_depth: str = "normal"):
-        """
-        Returns cognitive profile based on billing config + route + world + intent
-        Brain ka kaam: world/intent/depth se adjust karna
-        Billing ka kaam: base power level inject karna
-        """
+    def decide(self, route: str, config: dict, world_state: dict,
+               intent: dict | None = None, required_depth: str = "normal"):
 
+        DEPTH_INDEX = {
+            "shallow": 0, "normal": 1, "moderate": 2,
+            "deep": 3, "very_deep": 4, "ultra_deep": 5
+        }
+        depth_idx            = DEPTH_INDEX.get(required_depth, 1)
         cognitive_load_level = config.get("cognitive_load_level", "minimal")
+
+        # Billing authoritative hai — brain override nahi karega
+        billing_max_docs       = config.get("max_docs", 6)
+        billing_use_emergent   = config.get("use_emergent_concepts", False)
+        billing_deep_reasoning = config.get("deep_reasoning", False)
 
         # ===== MINIMAL (free) =====
         if cognitive_load_level == "minimal":
             profile = {
-                "use_chain": True,
-                "deep_reasoning": False,
-                "use_emergent_concepts": False,
-                "max_docs": 4,
-                "query_complexity": "low",
-                "parallel_thinking": False,
-                "assumption_checking": False
+                "use_chain":                True,
+                "deep_reasoning":           billing_deep_reasoning,
+                "use_emergent_concepts":    billing_use_emergent,
+                "max_docs":                 billing_max_docs,
+                "query_complexity":         "low",
+                "parallel_thinking":        True,
+                "assumption_checking":      True,
+                "multi_doc_synthesis":      True,   # 6 docs pe light naturally
+                "contradiction_resolution": True    # 6 docs pe light naturally
             }
 
         # ===== STANDARD (paid) =====
         elif cognitive_load_level == "standard":
             profile = {
-                "use_chain": True,
-                "deep_reasoning": False,
-                "use_emergent_concepts": False,
-                "max_docs": 8,
-                "query_complexity": "normal",
-                "parallel_thinking": False,
-                "assumption_checking": False
+                "use_chain":                True,
+                "deep_reasoning":           billing_deep_reasoning,
+                "use_emergent_concepts":    billing_use_emergent,
+                "max_docs":                 billing_max_docs,
+                "query_complexity":         "normal",
+                "parallel_thinking":        True,
+                "assumption_checking":      True,
+                "multi_doc_synthesis":      True,   # 12 docs pe medium
+                "contradiction_resolution": True    # 12 docs pe medium
             }
 
         # ===== ADVANCED (ultra_paid) =====
         elif cognitive_load_level == "advanced":
             profile = {
-                "use_chain": True,
-                "deep_reasoning": True,
-                "use_emergent_concepts": True,
-                "max_docs": 15,
-                "query_complexity": "high",
-                "parallel_thinking": False,
-                "assumption_checking": True
-            }
-
-        # ===== PROFESSIONAL (business_small) — team workload =====
-        elif cognitive_load_level == "professional":
-            profile = {
-                "use_chain": True,
-                "deep_reasoning": True,
-                "use_emergent_concepts": True,
-                "max_docs": 25,
-                "query_complexity": "high",
-                "parallel_thinking": True,
-                "assumption_checking": True,
-                "multi_doc_synthesis": True
-            }
-
-        # ===== EXPERT (enterprise) — org level heavy load =====
-        elif cognitive_load_level == "expert":
-            profile = {
-                "use_chain": True,
-                "deep_reasoning": True,
-                "use_emergent_concepts": True,
-                "max_docs": 40,
-                "query_complexity": "very_high",
-                "parallel_thinking": True,
-                "assumption_checking": True,
-                "multi_doc_synthesis": True,
+                "use_chain":                True,
+                "deep_reasoning":           billing_deep_reasoning,
+                "use_emergent_concepts":    billing_use_emergent,
+                "max_docs":                 billing_max_docs,
+                "query_complexity":         "high",
+                "parallel_thinking":        True,
+                "assumption_checking":      True,
+                "multi_doc_synthesis":      True,
                 "contradiction_resolution": True
             }
 
-        # ===== MAXIMUM (jarvis) — full cognitive power =====
-        # Blueprint: "Jarvis ko unlimited power milta hai"
-        # Hardcoded labels HATAO - AI khud smjhega training ke baad
+        # ===== PROFESSIONAL (business_small) =====
+        elif cognitive_load_level == "professional":
+            profile = {
+                "use_chain":             True,
+                "deep_reasoning":        billing_deep_reasoning,
+                "use_emergent_concepts": billing_use_emergent,
+                "max_docs":              billing_max_docs,
+                "query_complexity":      "very_high",
+                "parallel_thinking":     True,
+                "assumption_checking":   True,
+                "multi_doc_synthesis":   True,
+                "contradiction_resolution": True   # business se milti hai
+            }
+
+        # ===== EXPERT (enterprise) =====
+        elif cognitive_load_level == "expert":
+            profile = {
+                "use_chain":                 True,
+                "deep_reasoning":            billing_deep_reasoning,
+                "use_emergent_concepts":     billing_use_emergent,
+                "max_docs":                  billing_max_docs,
+                "query_complexity":          "expert",
+                "parallel_thinking":         True,
+                "assumption_checking":       True,
+                "multi_doc_synthesis":       True,
+                "contradiction_resolution":  True
+            }
+
+        # ===== MAXIMUM (jarvis) =====
         elif cognitive_load_level == "maximum":
             profile = {
-                "use_chain": True,
-                "deep_reasoning": True,
-                "use_emergent_concepts": True,
-                "max_docs": 999,
-                "query_complexity": "maximum",
-                "parallel_thinking": True,
-                "assumption_checking": True,
-                "multi_doc_synthesis": True,
-                "contradiction_resolution": True,
-                # vedic_cross_reference, ancient_modern_blend, invention_mode
-                # Yeh sab AI khud seekhega training ke baad
-                # Abhi sirf base capabilities enable karo
+                "use_chain":                 True,
+                "deep_reasoning":            billing_deep_reasoning,
+                "use_emergent_concepts":     billing_use_emergent,
+                "max_docs":                  billing_max_docs,
+                "query_complexity":          "maximum",
+                "parallel_thinking":         True,
+                "assumption_checking":       True,
+                "multi_doc_synthesis":       True,
+                "contradiction_resolution":  True
             }
 
         else:
-            # Fallback — safe default
             profile = {
-                "use_chain": True,
-                "deep_reasoning": False,
-                "use_emergent_concepts": False,
-                "max_docs": 4,
-                "query_complexity": "low",
-                "parallel_thinking": False,
-                "assumption_checking": False
+                "use_chain":             True,
+                "deep_reasoning":        billing_deep_reasoning,
+                "use_emergent_concepts": billing_use_emergent,
+                "max_docs":              billing_max_docs,
+                "query_complexity":      "low",
+                "parallel_thinking":     True,
+                "assumption_checking":   True,
+                "multi_doc_synthesis":   True,    # ← ADD
+                "contradiction_resolution": True 
             }
 
         # ================================================================
-        # BRAIN KA KAAM — Route/World/Intent/Depth aware adjustments
-        # Yeh sab tier se independent hain — pure cognitive logic
+        # BRAIN KA KAAM — Route/World/Depth aware adjustments
         # ================================================================
 
-        # ---- Route-aware ----
         if route == "reasoning":
             profile["deep_reasoning"] = True
-            profile["use_chain"] = True
+            profile["use_chain"]      = True
 
         elif route == "retrieval":
-            # Sirf agar billing ne allow kiya ho
-            if config.get("use_emergent_concepts", False):
-                profile["use_emergent_concepts"] = True
             profile["max_docs"] = max(profile["max_docs"], 6)
 
         elif route == "memory":
-            profile["use_chain"] = False  # memory route mein chain avoid karo
+            profile["use_chain"] = False
 
-        # ---- World-aware adjustments (brain ka kaam — sahi jagah) ----
-        if world_state["domain"] == "political":
-            profile["deep_reasoning"] = True
-            profile["use_emergent_concepts"] = True
+        if world_state.get("ethical_weight") == "high":
+            profile["deep_reasoning"]      = True
             profile["assumption_checking"] = True
 
         if world_state.get("human_factor"):
-            profile["use_chain"] = False  # avoid cold logic
+            profile["use_chain"] = False
 
-        if world_state["ethical_weight"] == "medium":
-            profile["deep_reasoning"] = True
-
-        # ---- Intent-aware tuning ----
-        if intent:
-            if isinstance(intent, dict):
-                urgency = intent.get("urgency", "normal")
-            else:
-                urgency = "normal"
-
-            if urgency == "high":
-                profile["deep_reasoning"] = True
-
-        # ---- Depth-aware ----
-        if required_depth == "deep":
-            profile["deep_reasoning"] = True
-            profile["max_docs"] = min(profile["max_docs"] + 2, 999)
+        # Depth-aware — numeric, sab variants cover — duplicate hataya
+        if depth_idx >= 3:
+            profile["deep_reasoning"]      = True
+            profile["assumption_checking"] = True
+            profile["max_docs"] = min(
+                profile["max_docs"] + max(depth_idx - 2, 1) * 2,
+                billing_max_docs
+            )
 
         return profile
 # def expand_query(llm, question):
@@ -1548,7 +1592,7 @@ class AlignmentFineTuner:
         if agency_result and agency_result.get("blocked"):
             alignment["safety_ok"] = True
 
-        if meta.get("confidence") == "low":
+        if meta.get("confidence", 1.0) < 0.35:    
             alignment["clarity_ok"] = False
 
         if "must" in answer.lower() or "always" in answer.lower():
@@ -1641,157 +1685,168 @@ class MetaCognitionEngine:
         cognitive_profile: dict = None
     ):
         """
-        LIGHT meta-cognition — blueprint strict.
-        
-        Kaam:
-          1. Answer observe karo — judge karo (observer, participant nahi)
-          2. Confidence estimate karo — proxy signals se
-          3. Retry decide karo — billing config se, tier agnostic
-        
+        Blueprint Phase 2.3 — Light Meta Cognition.
+        Answer ki linguistic quality judge karo.
         Rules:
-          - NO LLM call — brain ka code hai yeh
-          - Single-pass evaluation only
-          - MAX ONE retry — call site enforce karta hai
-          - No loops, no recursion
-          - No world-model / self-model awareness (abhi light phase hai)
+          - NO LLM call
+          - No word/sentence/token count
+          - spaCy dep_/pos_/morph/ents — language agnostic
+          - confidence = float 0.0-1.0 — downstream float ops ke liye
+          - Single-pass, max one retry
         """
+        doc     = _NLP(answer)
+        profile = cognitive_profile or {}
+        tokens  = [t for t in doc if not t.is_space and not t.is_punct]
 
         # ====================================================
-        # STEP 1: ANSWER KE PROXY SIGNALS — observer mode
-        # Blueprint: "lightweight signal use karta hai"
+        # STEP 1 — LINGUISTIC QUALITY SIGNALS
+        # Size se bilkul independent — pure structure/semantics
         # ====================================================
 
-        length = len(answer.split())
+        # Signal 1 — Causal/subordinate reasoning structure
+        # dep_ advcl=adverbial clause, mark=subordinator,
+        # csubj=clausal subject, relcl=relative clause,
+        # xcomp=open clausal complement, ccomp=clausal complement
+        # Kisi bhi language mein complex reasoning ka marker
+        has_reasoning = any(
+            token.dep_ in ["advcl", "mark", "csubj", "relcl", "xcomp", "ccomp"]
+            for token in doc
+        )
 
-        # Structure hai? — organized thinking ka sign
+        # Signal 2 — Multi-perspective thinking
+        # Multiple nsubj (subjects) + multiple ROOT verbs
+        # = system ne ek se zyada angles se socha
+        subjects   = [t for t in doc if t.dep_ in ["nsubj", "nsubjpass"]]
+        root_verbs = [t for t in doc if t.dep_ == "ROOT"]
+        has_multi_perspective = len(subjects) >= 2 and len(root_verbs) >= 2
+
+        # Signal 3 — Factual grounding
+        # Named entities present = concrete facts referenced
+        # Language agnostic — NER universal hai
+        has_factual_grounding = len(doc.ents) >= 1
+
+        # Signal 4 — Structural organization
+        # Formatting markers — presence check, not count
         has_structure = any(
             m in answer
             for m in ["1.", "2.", "3.", "- ", "• ", "\n\n", "###", "**"]
         )
 
-        # Reasoning markers? — causal thinking ka sign
-        has_reasoning = any(
-            w in answer.lower()
-            for w in [
-                "because", "therefore", "hence", "reason", "evidence",
-                "suggests", "indicates", "isliye", "kyunki", "iska matlab",
-                "consequently", "thus", "as a result"
-            ]
+        # Signal 5 — Epistemic hedging
+        # Conditional mood ya infinitive after modal = uncertainty expressed
+        # Positive signal — system ne honest doubt show kiya
+        has_hedging = any(
+            token.morph.get("Mood") == ["Cnd"]
+            or token.morph.get("VerbForm") == ["Inf"]
+            for token in doc
+            if token.pos_ == "VERB"
         )
 
-        # Incomplete answer? — strong negative signal
-        is_incomplete = answer.strip().endswith(
-            ("...", "etc", "and so on", "aadi", "etc.")
+        # Signal 6 — Nuanced answer (adversative conjunction)
+        # "but/lekin/mais/però/aber" = system ne dono sides dekhi
+        has_nuance = any(
+            token.dep_ == "cc" and token.pos_ == "CCONJ"
+            for token in doc
         )
 
-        # Cognitive profile se — deep reasoning use hua ya nahi
-        # Agar deep reasoning use hua aur answer chhota hai — suspicious
-        deep_used = (cognitive_profile or {}).get("deep_reasoning", False)
+        # Signal 7 — Incomplete answer
+        # Last meaningful token dangling = answer cut off
+        # VERB/CCONJ/SCONJ/DET/ADP pe khatam = incomplete
+        is_incomplete = (
+            bool(tokens) and
+            tokens[-1].pos_ in ["VERB", "CCONJ", "SCONJ", "DET", "ADP"]
+        ) or answer.strip().endswith("...")
+
+        # Signal 8 — Cognitive investment flags
+        deep_used     = profile.get("deep_reasoning", False)
+        emergent_used = profile.get("use_emergent_concepts", False)
+        parallel_used = profile.get("parallel_thinking", False)
 
         # ====================================================
-        # STEP 2: SCORE CALCULATE KARO — depth proxy
-        # Blueprint: f(length, structure, reasoning_steps...)
+        # STEP 2 — SCORE — pure linguistic signals, zero size
         # ====================================================
+        score = 0.0
 
-        score = 0
-
-        # Length — depth ka proxy
-        if length > 150:    score += 3
-        elif length > 80:   score += 2
-        elif length > 30:   score += 1
-        # < 30 words = likely incomplete, score stays 0
-
-        # Structure — organized answer
-        if has_structure:   score += 1
-
-        # Reasoning — causal thinking present
-        if has_reasoning:   score += 2
-
-        # Deep reasoning use hua — cognitive investment proof
-        if deep_used:       score += 1
-
-        # Incomplete — strong negative
-        if is_incomplete:   score -= 3
+        if has_reasoning:           score += 3.0   # strongest — causal thinking
+        if has_multi_perspective:   score += 2.0   # multiple angles
+        if has_structure:           score += 1.5   # organized output
+        if has_factual_grounding:   score += 1.0   # grounded in facts
+        if has_hedging:             score += 1.0   # honest uncertainty
+        if has_nuance:              score += 1.0   # both sides considered
+        if deep_used:               score += 1.0   # cognitive investment
+        if emergent_used:           score += 0.5   # memory enriched
+        if parallel_used:           score += 0.5   # parallel angles used
+        if is_incomplete:           score -= 4.0   # strong negative
 
         # ====================================================
-        # STEP 3: CONTEXT-AWARE STANDARD TIGHTEN KARO
-        # Billing se alag — yeh answer ki quality standard hai
+        # STEP 3 — CONTEXT-AWARE STANDARD
         # ====================================================
-
-        # World context se — ethical domain mein zyada careful
         ethical_weight = (world_state or {}).get("ethical_weight", "low")
         if ethical_weight in ["medium", "high"]:
-            score -= 1  # higher standard required
+            score -= 1.0
 
-        # Research intent — zyada depth chahiye
+        # intent_state — Layer 1 computed output — acceptable
         if intent_state == "research":
-            score -= 1  # stricter standard
-
-        # Execution intent — accuracy critical
+            score -= 1.0   # research = stricter standard
         if intent_state == "execution":
-            score -= 1
+            score -= 1.0   # execution = accuracy critical
 
         # ====================================================
-        # STEP 4: CONFIDENCE ASSIGN KARO
+        # STEP 4 — CONFIDENCE AS FLOAT 0.0-1.0
+        # Downstream float operations ke liye — string nahi
+        # MetaRetryEngine, MetaControlEngine, AlignmentFineTuner
+        # sab float expect karte hain
         # ====================================================
+        max_possible = 11.0   # maximum score possible
+        raw_confidence = max(0.0, min(score, max_possible)) / max_possible
 
-        if score >= 5:    confidence = "high"
-        elif score >= 3:  confidence = "medium"
-        else:             confidence = "low"
+        # String label bhi rakho — AlignmentFineTuner ke liye
+        if raw_confidence >= 0.6:    confidence_label = "high"
+        elif raw_confidence >= 0.35: confidence_label = "medium"
+        else:                        confidence_label = "low"
 
         # ====================================================
-        # STEP 5: RETRY DECISION — BILLING CONFIG SE
-        # Blueprint: "Public vs Jarvis me behavior alag rakhta hai"
-        # Yeh billing mein define hota hai — brain mein tier nahi
+        # STEP 5 — RETRY — billing config se
         # ====================================================
-        
         retry_enabled = config.get("meta_retry_enabled", False)
         threshold     = config.get("meta_confidence_threshold", "low")
 
         retry = False
-
         if retry_enabled:
-            if threshold == "medium" and confidence != "high":
-                # Enterprise + Jarvis — medium ya low pe bhi retry
+            if threshold == "medium" and confidence_label != "high":
                 retry = True
-            elif threshold == "low" and confidence == "low":
-                # Free, Paid, Ultra, Business — sirf clearly galat pe retry
+            elif threshold == "low" and confidence_label == "low":
                 retry = True
+
         # ====================================================
-        # STEP 6: JARVIS EXTRA — SELF-CRITICAL MODE
-        # Jarvis ko sabse zyada strict hona chahiye
-        # Even "medium" confidence pe extra check
+        # STEP 6 — JARVIS SELF-CRITICAL
         # ====================================================
         self_critical = config.get("meta_self_critical", False)
-        
-        if self_critical and confidence == "medium" and retry_enabled:
-            # Jarvis medium pe bhi retry karta hai — highest standard
-            retry = True 
+        if self_critical and confidence_label == "medium" and retry_enabled:
+            retry = True
+
         # ====================================================
-        # STEP 7: INTENT-AWARE OVERRIDE
-        # Research + incomplete — retry zaroori agar allowed
+        # STEP 7 — INTENT-AWARE OVERRIDE
         # ====================================================
         if retry_enabled and is_incomplete and intent_state in ["research", "execution"]:
             retry = True
 
-           
-
-        # ====================================================
-        # RETURN — downstream format preserve
-        # meta["confidence"] → cognitive_profile + world_state
-        # meta["retry"]      → llm_generate(retry_prompt)
-        # meta["signals"]    → Phase 6A AlignmentFineTuner ke liye
-        # ====================================================
         return {
-            "confidence": confidence,
-            "retry": retry,
+            "confidence":       raw_confidence,      # float — downstream float ops
+            "retry":            retry,
             "signals": {
-                "length": length,
-                "has_structure": has_structure,
-                "has_reasoning": has_reasoning,
-                "is_incomplete": is_incomplete,
-                "score": score,
-                "ethical_weight": ethical_weight
+                "has_reasoning":         has_reasoning,
+                "has_multi_perspective": has_multi_perspective,
+                "has_factual_grounding": has_factual_grounding,
+                "has_structure":         has_structure,
+                "has_hedging":           has_hedging,
+                "has_nuance":            has_nuance,
+                "is_incomplete":         is_incomplete,
+                "deep_used":             deep_used,
+                "emergent_used":         emergent_used,
+                "parallel_used":         parallel_used,
+                "score":                 score,
+                "ethical_weight":        ethical_weight
             }
         }
         
@@ -1804,17 +1859,34 @@ class IntentStateEngine:
 
     def detect(self, question: str) -> str:
         """
+        Fallback — layer1_bundle available nahi hone par.
+        spaCy linguistic signals — language agnostic.
+        No English keywords.
         Fallback single-intent detection (legacy / safety)
         """
-        q = question.lower()
+        if not question or not question.strip():
+            return "general"
 
-        if any(k in q for k in ["research", "study", "analyze", "compare", "why"]):
-            return "research"
-        if any(k in q for k in ["do", "build", "create", "execute", "run"]):
-            return "execution"
-        if any(k in q for k in ["how", "what", "explain", "define"]):
-            return "information"
+        doc          = _NLP(question)
+        verb_count   = sum(1 for t in doc if t.pos_ == "VERB")
+        entity_count = len(doc.ents)
+        noun_count   = sum(1 for t in doc if t.pos_ == "NOUN")
 
+        # Causal/subordinate structure → research/analysis intent
+        has_causal = any(
+            t.dep_ in ["advcl", "mark", "csubj", "relcl"]
+            for t in doc
+        )
+
+        # High verb count + no entities → process/execution intent
+        has_process = verb_count >= 2 and entity_count == 0
+
+        # Named entities + nouns → factual/information intent
+        has_factual = entity_count >= 1 and noun_count >= 1
+
+        if has_causal:   return "research"
+        if has_process:  return "execution"
+        if has_factual:  return "information"
         return "general"
 
     # ==================================================
@@ -1822,52 +1894,69 @@ class IntentStateEngine:
     # ==================================================
     def detect_from_layer1(self, layer1_bundle: dict) -> str:
         """
-        Uses Layer-1 intent decomposition output to infer
-        the dominant intent state.
-
-        Input example:
-        layer1_bundle = {
-            "intent_type": "mixed",
-            "sub_goals": [...],
-            "domains": [...],
-            "required_depth": "deep"
-        }
+        Layer 1 numeric signals se intent state detect karo.
+        No string label match — depth_idx, sub_goals count, domains count.
         """
-
         if not layer1_bundle:
             return "general"
 
-        intent_type = layer1_bundle.get("intent_type", "general")
-        sub_goals = layer1_bundle.get("sub_goals", [])
+        DEPTH_INDEX = {
+            "shallow": 0, "normal": 1, "moderate": 2,
+            "deep": 3, "very_deep": 4, "ultra_deep": 5
+        }
+
         required_depth = layer1_bundle.get("required_depth", "normal")
+        depth_idx      = DEPTH_INDEX.get(required_depth, 1)
+        sub_goals      = layer1_bundle.get("sub_goals", [])
+        domains        = layer1_bundle.get("domains", [])
+        normalized_q   = layer1_bundle.get("normalized_query", "")
 
-        # 1️⃣ Direct mapping (strongest signal)
-        if intent_type in ["research"]:
+        # Depth — numeric — strongest signal
+        # ultra_deep/very_deep → research (Jarvis bhi cover)
+        if depth_idx >= 4:
             return "research"
-        if intent_type in ["invention"]:
-            return "invention"
-        if intent_type in ["planning"]:
-            return "planning"
-        if intent_type in ["execution", "procedural"]:
-            return "execution"
-        if intent_type in ["ethical", "philosophical"]:
-            return "analysis"
-        if intent_type in ["mixed"]:
-            if required_depth in ["deep", "very_deep"]:
-                return "research"
-            return "information"
-        if intent_type in ["conceptual", "factual"]:
-            return "information"
 
-        # 3️⃣ Sub-goal heuristic
+        # deep + zyada sub_goals → research
+        if depth_idx == 3 and len(sub_goals) >= 3:
+            return "research"
+
+        # deep + kam sub_goals → analysis
+        if depth_idx == 3:
+            return "analysis"
+
+        # Cross-domain → research
+        if len(domains) >= 3:
+            return "research"
+
+        # 2 domains → analysis
+        if len(domains) >= 2:
+            return "analysis"
+
+        # Complex sub_goals → analysis
+        if len(sub_goals) >= 3:
+            return "analysis"
+
+        # Sub-goals — spaCy se language agnostic
         for goal in sub_goals:
-            g = goal.lower()
-            if any(k in g for k in ["compare", "evaluate", "analyze"]):
+            if not goal.strip():
+                continue
+            goal_doc     = _NLP(goal)
+            has_causal   = any(
+                t.dep_ in ["advcl", "mark", "csubj", "relcl"]
+                for t in goal_doc
+            )
+            verb_count   = sum(1 for t in goal_doc if t.pos_ == "VERB")
+            entity_count = len(goal_doc.ents)
+
+            if has_causal:
                 return "research"
-            if any(k in g for k in ["build", "implement", "execute"]):
+            if verb_count >= 2 and entity_count == 0:
                 return "execution"
 
-        # 4️⃣ Safe default
+        # Fallback — spaCy on normalized query
+        if normalized_q:
+            return self.detect(normalized_q)
+
         return "information"
 
 
@@ -2454,39 +2543,32 @@ class IntentDecompositionEngine:
         # PHASE 1.2 — Intent Type Detection
         # Blueprint: "ye routing nahi hai, thinking style hai"
         # Blueprint: "Bina Memory Graph ke Intent sirf text hoga, Meaning nahi"
-        # No keywords | No anchors | Pure semantic + structural
+        # Real computed signals — koi string labels nahi
         # ════════════════════════════════════
-        intent_type   = "mixed"
-        thinking_type = "mixed"
-        
-        # ── Primary: Memory Graph semantic activation ─────────────────
+
+        # ── spaCy structural signals — language agnostic ──────────────────
+        # dep_ aur pos_ universal hain — French, Hindi, Arabic sab mein same
+        is_analytical = any(t.dep_ in ("advcl", "ccomp", "expl") for t in doc)
+        has_verb      = any(t.pos_ == "VERB" for t in doc)
+        has_entity    = len(entities) >= 1
+
+        # ── Memory Graph semantic activation — Phase 6 ke baad rich hoga ──
+        graph_intent_score = 0.0
         if memory_graph is not None:
             try:
                 activated = memory_graph.get_similar_concepts(
                     query_emb.tolist(), top_k=3
                 )
-                if activated and activated[0].get("score", 0) > 0.6:
-                    intent_type = activated[0].get("metadata", {}).get("intent_hint") or "mixed"
-                    logging.info(f"[Layer1 Ph1.2] Graph activated: {intent_type}")
+                if activated:
+                    graph_intent_score = activated[0].get("score", 0.0)
+                logging.info(f"[Layer1 Ph1.2] graph_intent_score={graph_intent_score:.2f}")
             except Exception as e:
                 logging.error(f"[Layer1 Ph1.2] Graph error: {e}")
-        
-        # ── Fallback: spaCy structural signals (language agnostic) ────
-        # dep_ aur pos_ universal hain — French, Hindi, Arabic sab mein same
-        # Koi length check nahi — structure decide karta hai, size nahi
-        if intent_type == "mixed":
-            is_analytical = any(t.dep_ in ("advcl", "ccomp", "expl") for t in doc)
 
-            if is_analytical:
-                intent_type = "conceptual"
-            elif any(t.pos_ == "VERB" for t in doc):
-                intent_type = "procedural"
-            else:
-                intent_type = "factual"
-
-        thinking_type = intent_type
         logging.info(
-            f"[Layer1 Ph1.2] intent={intent_type} | thinking={thinking_type}"
+            f"[Layer1 Ph1.2] is_analytical={is_analytical} | "
+            f"has_verb={has_verb} | has_entity={has_entity} | "
+            f"graph_score={graph_intent_score:.2f}"
         )
 
 
@@ -2598,7 +2680,6 @@ class IntentDecompositionEngine:
         # ════════════════════════════════════
 
         # ── Objective signals ─────────────────────────────────────────────
-        n_sentences = len(list(doc.sents))
         n_entities  = len(entities)
         goal_count  = len(sub_goals)
 
@@ -2637,7 +2718,7 @@ class IntentDecompositionEngine:
 
         logging.info(
             f"[Layer1 Ph1.5] depth={required_depth} | "
-            f"sents={n_sentences} | ents={n_entities} | "
+            f"ents={n_entities} | "
             f"goals={goal_count} | graph={graph_relevance:.2f}"
         )
         # ════════════════════════════════════
@@ -2687,18 +2768,22 @@ class IntentDecompositionEngine:
             "raw_query":         raw_query,
             "normalized_query":  normalized_query,
             "query_embedding":   query_emb.tolist(),
-            "intent_type":       intent_type,
-            "thinking_type":     thinking_type,
+            # "intent_type":       intent_type,
+            # "thinking_type":     thinking_type,
             "sub_goals":         sub_goals,
             "expanded_queries":  expanded_queries,
             "required_depth":    required_depth,
             "domains":           domains,
-            "reasoning_plan":    sub_goals[:3],
+            # "reasoning_plan":    sub_goals[:3],
             # spaCy signals — Layer 2, 3 ke liye
             "entities":          entities,
             "noun_chunks":       noun_chunks,
             # billing config value — Layer 2 branching ke liye
             "max_goals":         max_goals,
+            "is_analytical":       is_analytical,
+            "has_verb":            has_verb,
+            "has_entity":          has_entity,
+            "graph_intent_score":  graph_intent_score,
         }
 
         state["layer1_intent_bundle"] = intent_bundle
@@ -2815,11 +2900,10 @@ class IntentQueryBrancher:
     Language agnostic — embedding aur spaCy dono language se upar hain.
     """
 
-    def branch(self, base_query: str, layer1_bundle: dict) -> list:
+    def branch(self, base_query: str, layer1_bundle: dict, cognitive_profile: dict = None) -> list:
         """
         base_query    : Layer 1 ka normalized_query
         layer1_bundle : Layer 1 ka poora output
-
         Returns: list of actual query strings — genuinely alag angles
         Ye strings directly Layer 3 mein search karengi
         """
@@ -2829,40 +2913,74 @@ class IntentQueryBrancher:
         required_depth = layer1_bundle.get("required_depth", "normal")
         branches = []
         seen = set()
-
+    
+        # Layer 1 Phase 1.2 signals — real power
+        is_analytical      = layer1_bundle.get("is_analytical", False)
+        has_verb           = layer1_bundle.get("has_verb", False)
+        has_entity         = layer1_bundle.get("has_entity", False)
+        graph_intent_score = layer1_bundle.get("graph_intent_score", 0.0)
+    
+        # Numeric depth — string match nahi
+        DEPTH_INDEX = {
+            "shallow": 0, "normal": 1, "moderate": 2,
+            "deep": 3, "very_deep": 4, "ultra_deep": 5
+        }
+        depth_idx = DEPTH_INDEX.get(required_depth, 1)
+    
+        profile = cognitive_profile or {}
+        COMPLEXITY_BRANCHES = {
+            "low": 1, "normal": 2, "high": 3,
+            "very_high": 4, "expert": 4, "maximum": 5
+        }
+        max_branches = COMPLEXITY_BRANCHES.get(
+            profile.get("query_complexity", "normal"), 2
+        )
+    
+        branches = []
+        seen = set()
+    
         def add(q: str):
             key = q.lower().strip()
             if key and key not in seen:
                 seen.add(key)
                 branches.append(q)
-
-        # Branch 1 — base query hamesha hoti hai
+    
+        # Branch 1 — base query hamesha
         add(base_query)
-
-        # Branch 2 — sub_goals se: Memory Graph ne jo concepts nikale
-        # ye real semantic angles hain — language agnostic, Phase 6 ke baad rich honge
+    
+        # Branch 2 — sub_goals: Memory Graph ke concepts — real semantic angles
         for goal in sub_goals:
             if goal.lower() not in base_query.lower():
                 add(f"{base_query} {goal}")
-
-        # Branch 3 — entities se: named concepts pe focused query
-        # spaCy entities language agnostic hain — Hindi, French, Sanskrit sab
+    
+        # Branch 3 — entities — complexity ke hisaab se
         if entities:
-            add(f"{base_query} {' '.join(entities[:2])}")
-
-        # Branch 4 — noun_chunks se: sub-topics pe alag angle
-        for chunk in noun_chunks[:2]:
+            add(f"{base_query} {' '.join(entities[:max_branches])}")
+    
+        # Branch 4 — noun_chunks — complexity ke hisaab se
+        for chunk in noun_chunks[:max_branches]:
             if chunk.lower() not in base_query.lower():
                 add(f"{chunk} {base_query}")
-
-        # Branch 5 — depth signal se: deep required hai to
-        # entities se extra angle — language agnostic, kisi bhi language mein kaam karta hai
-        # required_depth billing config se aaya — brain decide nahi karta
-        if required_depth in ["deep", "very_deep", "ultra_deep"]:
+    
+        # Branch 5 — depth numeric >= 3 — extra entity angle
+        # REAL POWER: deep query mein zyada angles explore honge
+        if depth_idx >= 3:
             for ent in entities[:2]:
                 if ent.lower() not in base_query.lower():
-                    add(f"{ent} {base_query}")    
-
+                    add(f"{ent} {base_query}")
+    
+        # Branch 6 — Layer 1 Phase 1.2 REAL POWER
+        # is_analytical=True → causal/conceptual angle add karo
+        # REAL POWER: analytical query ke liye ek extra conceptual branch
+        if is_analytical and graph_intent_score > 0.3:
+            for goal in sub_goals[:2]:
+                add(f"{goal} {base_query}")
+    
+        # Branch 7 — has_verb=True, no entity → procedural angle
+        # REAL POWER: process-oriented query ke liye verb-first branch
+        if has_verb and not has_entity and noun_chunks:
+            add(f"{noun_chunks[0]} {base_query}" if noun_chunks else base_query)
+    
         return branches
 #.............. Phase 2.2 : QUERY GRANULARITY DECISION ..........
 class QueryGranularityDecider:
@@ -2874,11 +2992,33 @@ class QueryGranularityDecider:
     """
 
     def decide(self, branches: list, layer1_bundle: dict, memory_graph) -> list:
-        depth_levels = ["shallow", "normal", "moderate", "deep", "very_deep", "ultra_deep"]
+        depth_levels   = ["shallow", "normal", "moderate", "deep", "very_deep", "ultra_deep"]
         required_depth = layer1_bundle.get("required_depth", "shallow")
-        depth_idx = depth_levels.index(required_depth) if required_depth in depth_levels else 0
-        depth_score = depth_idx / (len(depth_levels) - 1)  # normalize 0.0–1.0
-
+        depth_idx      = depth_levels.index(required_depth) if required_depth in depth_levels else 0
+        depth_score    = depth_idx / (len(depth_levels) - 1)  # 0.0–1.0
+    
+        # Layer 1 Phase 1.2 signals — real power
+        is_analytical      = layer1_bundle.get("is_analytical", False)
+        has_entity         = layer1_bundle.get("has_entity", False)
+        has_verb           = layer1_bundle.get("has_verb", False)
+        graph_intent_score = layer1_bundle.get("graph_intent_score", 0.0)
+    
+        # Intent-based scope bias — REAL POWER
+        # is_analytical → abstract scope chahiye (philosophy, theory, causal)
+        # has_entity only → narrow scope (exact facts, definitions)
+        # has_verb only → broad scope (process, landscape)
+        if is_analytical:
+            intent_bias = 0.3   # abstract end ki taraf push karo
+        elif has_entity and not is_analytical:
+            intent_bias = -0.2  # narrow end ki taraf push karo
+        elif has_verb and not has_entity:
+            intent_bias = 0.1   # broad middle mein raho
+        else:
+            intent_bias = 0.0
+    
+        # graph_intent_score — Memory Graph relevant hai to abstract scope zyada useful
+        graph_bias = graph_intent_score * 0.2
+    
         results = []
         for branch in branches:
             mem_score = 0.0
@@ -2887,13 +3027,18 @@ class QueryGranularityDecider:
                     mem_score = memory_graph.estimate_relevance(branch)
                 except Exception as e:
                     logging.warning(f"[Ph2.2] memory error: {e}")
-
-            # depth 60% + memory 40% = scope_score
-            # depth = config controlled (billing), memory = knowledge driven (graph)
-            scope_score = round((depth_score * 0.6) + (mem_score * 0.4), 4)
+    
+            # depth 50% + memory 30% + intent_bias 20% = scope_score
+            # REAL POWER: intent type scope decide karta hai, sirf depth nahi
+            scope_score = round(
+                (depth_score * 0.5) + (mem_score * 0.3) + intent_bias + graph_bias,
+                4
+            )
+            # 0.0–1.0 clamp
+            scope_score = max(0.0, min(1.0, scope_score))
             results.append({"branch": branch, "scope_score": scope_score})
-
-        logging.info(f"[Ph2.2] scope_scores computed for {len(results)} branches")
+    
+        logging.info(f"[Ph2.2] scope_scores computed for {len(results)} branches | intent_bias={intent_bias}")
         return results
 
 #.................. Phase 2.3 : DYNAMIC QUERY SHAPE GENERATOR ..........
@@ -3048,7 +3193,8 @@ class AdaptiveQueryExpansionEngine:
         # Phase 2.1 — branches
         branches = brancher.branch(
             layer1_bundle.get("normalized_query", question),
-            layer1_bundle
+            layer1_bundle,
+            cognitive_profile
         )
 
         # Phase 2.2 — scope scores
@@ -3409,14 +3555,15 @@ async def main(
     # ================================
     
     router = CognitiveRouter()
-    
+    CognitiveRouter.route_with_context()
     cognitive_route = router.route_with_context(
         question=question,
         intent=intent_state,
         domains=layer1_bundle.get("domains", []),
-        required_depth=layer1_bundle.get("required_depth", "normal")
+        required_depth=layer1_bundle.get("required_depth", "normal"),
+        layer1_bundle=layer1_bundle    # ← numeric signals ke liye
     )
-    
+   
     logging.info(f"[Cognitive Route] → {cognitive_route}")
 
     #-------------------------------------------------------------
@@ -3425,7 +3572,11 @@ async def main(
         # Layer 1 ka domains list — agar koi bhi domain detect hua = human context possible
         "human_factor": len(layer1_bundle.get("domains", [])) > 0,
         # required_depth se decide — string label nahi
-        "ethical_weight": "high" if layer1_bundle.get("required_depth") in ["deep", "very_deep", "ultra_deep"] else "low"
+        # "ethical_weight": "high" if layer1_bundle.get("required_depth") in ["deep", "very_deep", "ultra_deep"] else "low",
+        "ethical_weight": "high" if {
+            "shallow": 0, "normal": 1, "moderate": 2,
+            "deep": 3, "very_deep": 4, "ultra_deep": 5
+        }.get(layer1_bundle.get("required_depth", "normal"), 1) >= 3 else "low"
     }
     
     # world_state = {
@@ -3780,7 +3931,7 @@ Question:
         docs, emergent_concepts = implicit_memory_retrieval(
             vector_db,
             mutated_question,
-            k=10
+            cognitive_profile=cognitive_profile   # billing ka max_docs respect hoga
         )
         
         # ===== Phase 3.3 : Conflict Detection =====
@@ -3832,13 +3983,12 @@ Question:
             logging.info(f"[Multi-Doc Synthesis] {len(context_parts)} sources structured for synthesis")
         else:
             context = "\n\n".join(doc.page_content for doc in docs[:max_docs])
-
-
+        
+        
         res = chain.invoke({
             "context": context,
             "question": mutated_question
-        })
-        
+        })        
 
     #------------------------------------------
     elif final_route == "reasoning":
