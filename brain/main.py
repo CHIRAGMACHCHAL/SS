@@ -2227,32 +2227,56 @@ class KnowledgeSourceClassifier:
         required_depth   = layer1_bundle.get("required_depth", "normal")
         depth_idx        = DEPTH_INDEX.get(required_depth, 1)
         normalized_query = layer1_bundle.get("normalized_query", "")
-        sub_goals        = layer1_bundle.get("sub_goals", [])  # Layer 1 output — complexity signal
+        sub_goals        = layer1_bundle.get("sub_goals", [])   # Layer 1 output — complexity signal
 
-        # spaCy — language-agnostic linguistic signals
+        # Layer 1 Phase 1.2 signals — real power
+        is_analytical      = layer1_bundle.get("is_analytical", False)
+        has_verb           = layer1_bundle.get("has_verb", False)
+        has_entity         = layer1_bundle.get("has_entity", False)
+        graph_intent_score = layer1_bundle.get("graph_intent_score", 0.0)
+
+        # spaCy — language-agnostic
         doc          = _NLP(normalized_query)
         entity_count = len(doc.ents)
         verb_count   = sum(1 for t in doc if t.pos_ == "VERB")
         noun_count   = sum(1 for t in doc if t.pos_ == "NOUN")
 
         # sub_goals count → complexity signal from Layer 1
-        is_complex = len(sub_goals) >= 3  # zyada goals = mixed/complex query
+        domains    = layer1_bundle.get("domains", [])
+        is_complex = len(sub_goals) >= 3 or len(domains) >= 2   # zyada goals = mixed/complex query
 
+
+        # REAL POWER: depth deep → conceptual
         if depth_idx >= 3:
             return "conceptual"
 
+        # REAL POWER: is_analytical → causal structure = deep meaning chahiye
+        if is_analytical:
+            return "conceptual"
+
+        # REAL POWER: Memory Graph strongly activated → conceptual
+        if graph_intent_score > 0.6:
+            return "conceptual"
+
+        # Shallow depth
         if depth_idx <= 1:
-            if entity_count >= 2:
+            # REAL POWER: entity present + not analytical → factual
+            if has_entity or entity_count >= 2:
                 return "factual"
             return "general"
 
-        # moderate depth — sub_goals + POS signals
+        # Moderate depth
         if is_complex:
-            return "mixed"        # Layer 1 ne multiple goals diye → dono sources chahiye
-        if verb_count > noun_count:
+            return "mixed"
+
+        # REAL POWER: verb heavy + no entity → procedural
+        if has_verb and not has_entity and verb_count > noun_count:
             return "procedural"
-        if entity_count >= 2:
+
+        # REAL POWER: entity present → factual
+        if has_entity or entity_count >= 2:
             return "factual"
+
         if noun_count > 0:
             return "conceptual"
 
@@ -2285,18 +2309,17 @@ class SourcePriorityResolver:
 
 # -------- Phase 3.2 : Confidence Gating --------
 class ConfidenceGate:
-    def apply(self, routing: dict, memory_score: float) -> dict:
-        """
-        Sirf memory gate karo agar confidence kam hai.
-        Reasoning pe haath mat lagao — wo Phase 3.1 aur 3.5 ka kaam hai.
-        """
-        # None guard
+    def apply(self, routing: dict, memory_score: float, layer1_bundle: dict = None) -> dict:
         if memory_score is None:
             memory_score = 0.5
 
-        if memory_score < 0.4:
+        bundle        = layer1_bundle or {}
+        is_analytical = bundle.get("is_analytical", False)
+
+        # REAL POWER: analytical query ke liye memory band mat karo
+        # kyunki analytical query ko Memory Graph chahiye — concepts + relations
+        if memory_score < 0.4 and not is_analytical:
             routing["memory"] = False
-            # reasoning touch nahi karte — Phase 3.1 ne already sahi set kiya hai
 
         return routing
 # -------- Phase 3.4 : Ambiguity Detection --------
@@ -2324,10 +2347,23 @@ class AmbiguityDetector:
         sub_goals        = layer1_bundle.get("sub_goals", [])
         normalized_query = layer1_bundle.get("normalized_query", "")
 
+        # Layer 1 Phase 1.2 signals — real power
+        is_analytical      = layer1_bundle.get("is_analytical", False)
+        graph_intent_score = layer1_bundle.get("graph_intent_score", 0.0)
+
         # spaCy — language-agnostic
         doc          = _NLP(normalized_query)
         entity_count = len(doc.ents)
         noun_count   = sum(1 for t in doc if t.pos_ == "NOUN")
+
+        # REAL POWER: analytical query ko ambiguous mat maano
+        # causal structure hai → query clear hai, chahe shallow lage
+        if is_analytical:
+            return False
+
+        # REAL POWER: Memory Graph activated → query ka meaning clear hai
+        if graph_intent_score > 0.6:
+            return False
 
         # Numeric vague signals — no English keywords
         is_shallow    = depth_idx <= 1
@@ -2339,13 +2375,37 @@ class AmbiguityDetector:
         return vague_score >= 3
 # -------- Phase 3.5 : Source Conflict Resolution --------
 class SourceConflictResolver:
-    def resolve(self, routing: dict) -> dict:
+    def resolve(self, routing: dict, layer1_bundle: dict = None) -> dict:
+        bundle        = layer1_bundle or {}
+        is_analytical = bundle.get("is_analytical", False)
+        graph_intent_score = bundle.get("graph_intent_score", 0.0)
+
+        # Blueprint: memory + retrieval dono active → reasoning force
         if routing["memory"] and routing["retrieval"]:
             routing["reasoning"] = True
+
+        # REAL POWER: analytical query → reasoning always on
+        if is_analytical:
+            routing["reasoning"] = True
+
+        # REAL POWER: graph activated → memory preserve
+        if graph_intent_score > 0.6:
+            routing["memory"] = True
+
+        domains = bundle.get("domains", [])
+
+        # REAL POWER: multiple domains = cross-domain = dono sources chahiye
+        if len(domains) >= 2:
+            routing["memory"]    = True
+            routing["retrieval"] = True
+            routing["reasoning"] = True    
+
         return routing
+    
+
 # -------- Phase 3.6 : Hallucination Guard --------
 class HallucinationGuard:
-    def apply(self, routing: dict, confidence: float, category: str) -> dict:
+    def apply(self, routing: dict, confidence: float, category: str, layer1_bundle: dict = None) -> dict:
         """
         Factual + low confidence → sirf retrieval.
         Memory aur reasoning band — hallucination risk minimize karo.
@@ -2354,7 +2414,13 @@ class HallucinationGuard:
         if confidence is None:
             confidence = 0.5
 
-        if category == "factual" and confidence < 0.3:
+        bundle        = layer1_bundle or {}
+        is_analytical = bundle.get("is_analytical", False)
+
+        # Factual + low confidence → sirf retrieval
+        # REAL POWER: analytical query pe ye guard nahi lagta
+        # kyunki analytical query ko Memory Graph chahiye — reasoning zaroori hai
+        if category == "factual" and confidence < 0.3 and not is_analytical:
             routing["memory"]    = False
             routing["reasoning"] = False
             routing["retrieval"] = True
@@ -2392,7 +2458,7 @@ class KnowledgeRouter:
         routing = resolver.resolve(category)
 
         # Phase 3.2 — confidence gate
-        routing = gate.apply(routing, memory_score)
+        routing = gate.apply(routing, memory_score, bundle)
 
         # Phase 3.4 — ambiguity detection (layer1_bundle se — language agnostic)
         is_ambiguous = ambiguity_det.detect(bundle)
@@ -2401,16 +2467,34 @@ class KnowledgeRouter:
             routing["reasoning"] = True
 
         # Phase 3.5 — source conflict resolution
-        routing = conflict_res.resolve(routing)
+        routing = conflict_res.resolve(routing, bundle)
 
         # Phase 3.6 — hallucination guard
-        routing = hallucination_gd.apply(routing, memory_score, category)
+        routing = hallucination_gd.apply(routing, memory_score, category, bundle)
 
         # cognitive_profile — billing gates apply (use_emergent_concepts, deep_reasoning)
         if profile.get("deep_reasoning"):
             routing["reasoning"] = True
         if profile.get("use_emergent_concepts"):
             routing["memory"] = True
+
+        # Layer 1 Phase 1.2 signals — real power
+        is_analytical      = bundle.get("is_analytical", False)
+        has_entity         = bundle.get("has_entity", False)
+        graph_intent_score = bundle.get("graph_intent_score", 0.0)
+
+        # REAL POWER: analytical query → reasoning force
+        if is_analytical:
+            routing["reasoning"] = True
+
+        # REAL POWER: graph strongly activated → memory force
+        if graph_intent_score > 0.6:
+            routing["memory"] = True
+
+        # REAL POWER: entity present + not analytical → retrieval boost
+        if has_entity and not is_analytical:
+            routing["retrieval"] = True
+  
 
         return {
             "use_memory":    routing["memory"],
@@ -2463,7 +2547,7 @@ class IntentDecompositionEngine:
     def process(self, user_query: str, state: dict,
                 config: dict = None, memory_graph=None) -> dict:
 
-        config             = config or {}
+        config= config or {}
         
         
 
@@ -2790,28 +2874,6 @@ class IntentDecompositionEngine:
         return state
     
 
-class MemoryAwarePruner:
-    """
-    Prunes expanded queries using memory relevance.
-    """
-
-    def __init__(self, threshold: float = 0.25):
-        self.threshold = threshold
-
-    def prune(self, queries: list[str], memory_graph) -> list[str]:
-        # memory_graph None ho to pruning skip — safe fallback
-        if memory_graph is None or not queries:
-            return queries
-        pruned = []
-        for q in queries:
-            try:
-                score = memory_graph.estimate_relevance(q)
-                if score >= self.threshold:
-                    pruned.append(q)
-            except Exception as e:
-                logging.warning(f"[Ph2.5-Pruner] memory error: {e}")
-                pruned.append(q)
-        return pruned if pruned else queries
 
 #--------LAYER 2 KA PHASE 2.5 MEMORY AWARE QUERY PRUNING (LAYER 4 HOOK)
 class MemoryAwareQueryPruner:
@@ -2845,11 +2907,18 @@ class MemoryAwareQueryPruner:
         if memory_graph is None or not queries:
             return queries
 
-        depth_levels = ["shallow", "normal", "moderate", "deep", "very_deep", "ultra_deep"]
-        required_depth = layer1_bundle.get("required_depth", "shallow")
-        depth_idx = depth_levels.index(required_depth) if required_depth in depth_levels else 0
-        is_deep = depth_idx >= 3  # deep, very_deep, ultra_deep — billing se aaya
 
+        DEPTH_INDEX = {
+            "shallow": 0, "normal": 1, "moderate": 2,
+            "deep": 3, "very_deep": 4, "ultra_deep": 5
+        }
+        required_depth     = layer1_bundle.get("required_depth", "shallow")
+        depth_idx          = DEPTH_INDEX.get(required_depth, 0)
+        is_deep            = depth_idx >= 3
+
+        # Layer 1 Phase 1.2 signals — real power
+        is_analytical      = layer1_bundle.get("is_analytical", False)
+        graph_intent_score = layer1_bundle.get("graph_intent_score", 0.0)
 
         pruned = []
         seen   = set()
@@ -2870,11 +2939,15 @@ class MemoryAwareQueryPruner:
 
             # Drop — strongly in memory, repeat waste hogi
             # Blueprint: "kya ye knowledge already store hai? drop karo"
-            if score > 0.85:
+            if score > 0.85 and not is_analytical:
                 continue
 
             # Deeper — Blueprint: "score low + required_depth deep = naya topic, rakhna zaroori"
             if is_deep and score < 0.3:
+                pruned.append(q)
+                continue
+
+            if graph_intent_score > 0.6 and score > 0.3:
                 pruned.append(q)
                 continue
 
@@ -2992,10 +3065,14 @@ class QueryGranularityDecider:
     """
 
     def decide(self, branches: list, layer1_bundle: dict, memory_graph) -> list:
-        depth_levels   = ["shallow", "normal", "moderate", "deep", "very_deep", "ultra_deep"]
+        DEPTH_INDEX = {
+            "shallow": 0, "normal": 1, "moderate": 2,
+            "deep": 3, "very_deep": 4, "ultra_deep": 5
+        }
+
         required_depth = layer1_bundle.get("required_depth", "shallow")
-        depth_idx      = depth_levels.index(required_depth) if required_depth in depth_levels else 0
-        depth_score    = depth_idx / (len(depth_levels) - 1)  # 0.0–1.0
+        depth_idx      = DEPTH_INDEX.get(required_depth, 0)
+        depth_score    = depth_idx / (len(DEPTH_INDEX) - 1)  # 0.0–1.0 normalize
     
         # Layer 1 Phase 1.2 signals — real power
         is_analytical      = layer1_bundle.get("is_analytical", False)
@@ -3051,38 +3128,82 @@ class QueryShapeGenerator:
     Forms = Memory Graph ke close concepts se emerge karte hain.
     Koi hardcoded English nahi — language agnostic.
     """
-
-    def generate(self, branch_item: dict, query_embedding: list, memory_graph, cognitive_profile: dict = None) -> str:
+    def generate(
+        self,
+        branch_item: dict,
+        query_embedding: list,
+        memory_graph,
+        cognitive_profile: dict = None,
+        layer1_bundle: dict = None       # Layer 1 signals ke liye
+    ) -> str:
         branch      = branch_item["branch"]
         scope_score = branch_item["scope_score"]
 
+        # Billing gate — FREE/PAID ke liye emergent concepts off
         if not (cognitive_profile or {}).get("use_emergent_concepts", False):
             return branch
-        # scope_score < 0.2 — narrow query, already specific
-        # Memory Graph enrichment noise banega
+
+        # Narrow query — already specific, enrichment noise banega
         if scope_score < 0.2 or memory_graph is None or not query_embedding:
             return branch
 
-        try:
-            # scope_score se top_k decide — ye hai "decision-based"
-            # 0.2–0.5 → 1 concept, 0.5–0.8 → 2, >0.8 → 3
-            top_k = max(1, round(scope_score * 3))
+        # Layer 1 Phase 1.2 signals — real power
+        bundle             = layer1_bundle or {}
+        is_analytical      = bundle.get("is_analytical", False)
+        has_verb           = bundle.get("has_verb", False)
+        has_entity         = bundle.get("has_entity", False)
+        graph_intent_score = bundle.get("graph_intent_score", 0.0)
 
-            # Close concepts — score > 0.5 — concrete/specific form
-            # Blueprint: "Declaration, Exploratory" = specific knowledge shape
+        try:
+            # scope_score se top_k decide
+            top_k = max(1, round(scope_score * 3))
             similar = memory_graph.get_similar_concepts(query_embedding, top_k=top_k)
-            concepts = [
+
+            # Close concepts — score > 0.5
+            close_concepts = [
                 c["concept"] for c in similar
                 if c.get("score", 0) > 0.5
                 and c["concept"].lower() not in branch.lower()
             ]
-            if concepts:
-                return f"{branch} {' '.join(concepts)}"
+
+            if not close_concepts:
+                return branch
+
+            # REAL POWER — Query shape Layer 1 signals se decide hoti hai
+            # Blueprint: "Declaration, Exploratory, Hypothetical, Comparative, Causal"
+
+            # Causal shape — is_analytical=True matlab causal structure hai
+            # REAL POWER: analytical query → concepts ko causal angle se connect karo
+            if is_analytical:
+                return f"{branch} {close_concepts[0]}"
+
+            # Comparative shape — Memory Graph strongly activated
+            # REAL POWER: graph relevant → related concepts compare karo
+            if graph_intent_score > 0.6 and len(close_concepts) >= 2:
+                return f"{branch} {close_concepts[0]} {close_concepts[1]}"            
+
+            # Exploratory shape — high scope, wide angle
+            # REAL POWER: abstract query → multiple concepts se explore karo
+            if scope_score > 0.7:
+                return f"{branch} {' '.join(close_concepts[:3])}"
+
+            # Declaration shape — entity present, narrow scope
+            # REAL POWER: factual query → entity pe focused single concept
+            if has_entity and scope_score < 0.5:
+                return f"{branch} {close_concepts[0]}"
+
+            # Procedural shape — verb heavy
+            # REAL POWER: process query → action concept add karo
+            if has_verb and not has_entity:
+                return f"{branch} {close_concepts[0]}"
+
+            # Default — concept add karo
+            return f"{branch} {' '.join(close_concepts)}"
+
         except Exception as e:
             logging.warning(f"[Ph2.3] memory error: {e}")
 
         return branch
-
  
 #...............Phase 2.4 : ABSTRACTION LEVEL MODULATOR ..........
 class AbstractionModulator:
@@ -3095,28 +3216,60 @@ class AbstractionModulator:
     Koi hardcoded English nahi.
     """
 
-    def adjust(self, query: str, scope_score: float, query_embedding: list, memory_graph, cognitive_profile: dict = None) -> str:
-        # Billing gate — FREE/PAID ke liye use_emergent_concepts False hai
+    def adjust(
+        self,
+        query: str,
+        scope_score: float,
+        query_embedding: list,
+        memory_graph,
+        cognitive_profile: dict = None,
+        layer1_bundle: dict = None        # Layer 1 signals
+    ) -> str:
+
+        # Billing gate
         if not (cognitive_profile or {}).get("use_emergent_concepts", False):
             return query
 
-        # scope_score < 0.5 — concrete level sufficient
-        # Abstract layer add karna is query ke liye useful nahi
         if scope_score < 0.5 or memory_graph is None or not query_embedding:
             return query
 
+        # Layer 1 Phase 1.2 signals
+        bundle        = layer1_bundle or {}
+        is_analytical = bundle.get("is_analytical", False)
+        has_entity    = bundle.get("has_entity", False)
+
+        # has_entity + low analytical = Concrete level sufficient
+        # REAL POWER: factual query ko abstract mat karo — noise banega
+        if has_entity and not is_analytical and scope_score < 0.7:
+            return query
+
         try:
-            # Door ke concepts — score 0.15–0.4
-            # Ye similar nahi hain lekin graph mein connected hain
-            # Blueprint: "Conceptual, Meta" = ye distance naturally represent karta hai
-            similar = memory_graph.get_similar_concepts(query_embedding, top_k=6)
-            abstract_concepts = [
-                c["concept"] for c in similar
-                if 0.15 < c.get("score", 0) < 0.4
-                and c["concept"].lower() not in query.lower()
-            ]
-            if abstract_concepts:
-                return f"{query} {abstract_concepts[0]}"
+            similar = memory_graph.get_similar_concepts(query_embedding, top_k=8)
+
+            # ── Conceptual level — scope 0.65–0.8 ──────────────────────────
+            # Medium distance concepts — models, theories angle
+            # REAL POWER: moderate abstract query ko theoretical angle milta hai
+            if 0.65 <= scope_score <= 0.8:
+                conceptual = [
+                    c["concept"] for c in similar
+                    if 0.3 <= c.get("score", 0) <= 0.5
+                    and c["concept"].lower() not in query.lower()
+                ]
+                if conceptual:
+                    return f"{query} {conceptual[0]}"
+
+            # ── Meta level — scope > 0.8 ya is_analytical ──────────────────
+            # Door ke concepts — ethics, philosophy angle
+            # REAL POWER: deep analytical query ko meta/philosophical angle milta hai
+            if scope_score > 0.8 or is_analytical:
+                meta = [
+                    c["concept"] for c in similar
+                    if 0.15 < c.get("score", 0) < 0.3
+                    and c["concept"].lower() not in query.lower()
+                ]
+                if meta:
+                    return f"{query} {meta[0]}"
+
         except Exception as e:
             logging.warning(f"[Ph2.4] memory error: {e}")
 
@@ -3143,29 +3296,48 @@ class QueryBudgetAllocator:
         self,
         queries: list,
         cognitive_profile: dict,
-        memory_graph
+        memory_graph,
+        layer1_bundle: dict = None
     ) -> list:
         """
         queries          : Phase 2.5 ka pruned output
         cognitive_profile: billing se aaya — max_docs budget hai
         memory_graph     : Layer 4 hook — priority measure ke liye
-
         Returns: budget ke andar top-priority queries — sorted
         """
         budget = cognitive_profile.get("max_docs", 6)
 
+        # Layer 1 Phase 1.2 signals — real power
+        bundle             = layer1_bundle or {}
+        is_analytical      = bundle.get("is_analytical", False)
+        graph_intent_score = bundle.get("graph_intent_score", 0.0)
+        deep_reasoning     = cognitive_profile.get("deep_reasoning", False)
+
         def priority_score(q: str) -> float:
-            # memory_graph na ho to sab equal priority
-            if memory_graph is None:
-                return 0.5
-            try:
-                mem_score = memory_graph.estimate_relevance(q)
-                # Invert karo — low memory = naya = high priority
-                # Blueprint: "Kaun Phle?" = unexplored pehle
-                return 1.0 - mem_score
-            except Exception as e:
-                logging.warning(f"[Ph2.6] memory error: {e}")
-                return 0.5
+            base = 0.5
+            if memory_graph is not None:
+                try:
+                    mem_score = memory_graph.estimate_relevance(q)
+                    # Invert — low memory = naya = high priority
+                    # Blueprint: "Kaun Pehle?" = unexplored pehle
+                    base = 1.0 - mem_score
+                except Exception as e:
+                    logging.warning(f"[Ph2.6] memory error: {e}")
+
+            # REAL POWER: analytical query ko extra priority
+            # Blueprint: "intent importance" factor
+            if is_analytical:
+                base += 0.2
+
+            # REAL POWER: graph activated queries pehle
+            if graph_intent_score > 0.6:
+                base += 0.15
+
+            # REAL POWER: deep reasoning — unexplored topics zyada priority
+            if deep_reasoning:
+                base += 0.1
+
+            return min(base, 1.0)
 
         prioritized = sorted(queries, key=priority_score, reverse=True)
         logging.info(f"[Ph2.6] budget={budget}, total={len(queries)}, selected={min(budget, len(queries))}")
@@ -3187,7 +3359,6 @@ class AdaptiveQueryExpansionEngine:
         granularity_decider = QueryGranularityDecider()
         shape_gen         = QueryShapeGenerator()
         abstraction       = AbstractionModulator()
-        pruner            = MemoryAwarePruner()
         allocator         = QueryBudgetAllocator()
 
         # Phase 2.1 — branches
@@ -3206,16 +3377,15 @@ class AdaptiveQueryExpansionEngine:
         query_emb = layer1_bundle.get("query_embedding")
         queries = []
         for item in query_scope_items:
-            q = shape_gen.generate(item, query_emb, memory_graph, cognitive_profile)
-            q = abstraction.adjust(q, item["scope_score"], query_emb, memory_graph, cognitive_profile)
+            q = shape_gen.generate(item, query_emb, memory_graph, cognitive_profile, layer1_bundle)
+            q = abstraction.adjust(q, item["scope_score"], query_emb, memory_graph, cognitive_profile, layer1_bundle)
             queries.append(q)
 
         # Phase 2.5 — prune
-        queries = pruner.prune(queries, memory_graph)
         queries = MemoryAwareQueryPruner().prune(queries, memory_graph, layer1_bundle)
 
         # Phase 2.6 — priority + budget
-        queries = allocator.allocate(queries, cognitive_profile, memory_graph)
+        queries = allocator.allocate(queries, cognitive_profile, memory_graph, layer1_bundle)
 
         # Ph 2.8 Trace — billing flag se control
         if cognitive_profile.get("trace_logging", False):
@@ -3711,7 +3881,7 @@ async def main(
     # mutated_question = f"{history}\n\nCurrent query: {mutated_question}"
 
  
-    # ===== Phase 3.6 : FINAL KNOWLEDGE ROUTING (ONLY CALL) =====
+    # ===== Phase 3.3 : FINAL KNOWLEDGE ROUTING (KnowledgeRouter) =====
     router3 = KnowledgeRouter()
     knowledge_route = router3.route(
         question=(
@@ -4236,7 +4406,7 @@ Question:
     
  
         
-        # ================================
+    # ================================
     # PHASE 6 — SELF TRAINING (JARVIS)
     # ================================
     
