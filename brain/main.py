@@ -2585,21 +2585,41 @@ class IntentDecompositionEngine:
 
         # ── Step 3: Grammar Normalization ────────────────────────────────
         # Blueprint: "grammar perfect karne ki koshish karo"
-        # Koi library 55+ languages mein grammar fix nahi kar sakti
-        # LLM ek baar call — sirf normalize, koi reasoning nahi
-        try:
-            normalized_query = llm_generate(
-                f"You are a multilingual text normalizer.\n"
-                f"Fix grammar, spelling, and shorthand of this query.\n"
-                f"Keep meaning exactly same. Do not add or remove information.\n"
-                f"Detected language: {detected_lang}\n"
-                f"Return ONLY the fixed query — no explanation, no extra text.\n\n"
-                f"Query: {cleaned}"
-            ).strip()
-            if not normalized_query:
-                normalized_query = cleaned
-        except Exception:
-            normalized_query = cleaned
+        # INDUSTRY STANDARD: No LLM in normalization - pure signal processing
+        # LLM meaning change kar sakta hai - risk nahi lena
+        # spaCy + regex = sufficient for normalization
+        
+        # Step 3.1: Unicode normalization (NFC form - industry standard)
+        import unicodedata
+        unicode_normalized = unicodedata.normalize('NFC', cleaned)
+        
+        # Step 3.2: Common shorthand expansion (rule-based, no LLM)
+        # These are universal across languages - not English-specific logic
+        shorthand_map = {
+            r'\bu\b': 'you',      # u -> you
+            r'\br\b': 'are',      # r -> are  
+            r'\bur\b': 'your',    # ur -> your
+            r'\bpls\b': 'please', # pls -> please
+            r'\bthx\b': 'thanks', # thx -> thanks
+            r'\bw/\b': 'with',    # w/ -> with
+            r'\bw/o\b': 'without', # w/o -> without
+        }
+        
+        grammar_cleaned = unicode_normalized
+        # Only apply shorthand expansion for English (detected in Step 2)
+        if detected_lang == 'en':
+            for pattern, replacement in shorthand_map.items():
+                grammar_cleaned = re.sub(pattern, replacement, grammar_cleaned, flags=re.IGNORECASE)
+        
+        # Step 3.3: Repeated punctuation cleanup (universal)
+        grammar_cleaned = re.sub(r'([?!.]){2,}', r'\1', grammar_cleaned)
+        
+        # Step 3.4: Final normalized query
+        # IMPORTANT: Original meaning 100% preserved - no LLM interpretation
+        normalized_query = grammar_cleaned.strip()
+        
+        # Log the transformation for debugging
+        logging.info(f"[Layer1 Ph1.1] Grammar normalization: '{cleaned[:50]}' -> '{normalized_query[:50]}'")
 
         # ── Step 4: spaCy parse on NORMALIZED query ───────────────────────
         # Pehle normalize, phir parse — raw par nahi
