@@ -2,6 +2,45 @@
 
 ---
 
+## MASTER METHODOLOGY — Har Phase Fix Ke Liye Follow Karo
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    SS AGI PHASE FIX METHODOLOGY                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│   1. BLUEPRINT = CAPABILITY GOAL                                       │
+│      - Blueprint me jo describe kiya hai = wo capability achieve karni │
+│      - Ye WHAT hai - kya hona chahiye                                  │
+│                                                                         │
+│   2. INDUSTRY = IMPLEMENTATION APPROACH                                │
+│      - Industry ke bade AI (ChatGPT, Claude, Grok) kaise karte hai     │
+│      - Ye HOW hai - kaise implement karna hai                          │
+│      - Industry standard follow karo for reliability & performance     │
+│                                                                         │
+│   3. UNIQUE FEATURES = CUSTOM APPROACH                                 │
+│      - Jo sirf SS AGI me hai, industry me nahi                         │
+│      - Iske liye apna dimaag lagao                                     │
+│      - Memory Graph, Vedic tools, Agency - ye unique hai               │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## INDUSTRY COMPARISON TABLE — Har Phase Ke Liye Banana
+
+| Aspect | Tumhara Current | Industry Standard | Recommendation |
+|--------|-----------------|-------------------|----------------|
+| [Feature 1] | Current implementation | What industry does | What to do |
+| [Feature 2] | Current implementation | What industry does | What to do |
+| Blueprint compliance | PARTIAL/FULL | N/A | Fix gaps |
+| Meaning preservation | RISKY/GUARANTEED | GUARANTEED | Match industry |
+| Latency | X ms | Y ms | Optimize |
+| Language support | X languages | Y languages | Match/exceed |
+
+---
+
 ### Core Philosophy — Pehle Samjho, Phir Fix Karo
 
 Hum SS AGI ki 5 layers aur unke phases ko **ek ek karke** fix karte hain — Layer 1 Phase 1.1 se shuru karke Layer 5 ke last phase tak. Sequence kabhi nahi todna. Lekin kisi bhi phase ko fix karne se pehle **poora blueprint deeply padhna** zaroori hai — sirf us phase ka section nahi, **poora** — kyunki saari layers aapas mein connected hain aur ek jagah galat fix doosri jagah tod sakta hai.
@@ -220,9 +259,57 @@ Agar kisi capability ko real power nahi mila → us phase ko **GREEN FLAG mat do
 
 ---
 
-### Step 11 — Green Flag Ya Issues
+### Step 11 — Industry Research Step (NAYA — MANDATORY)
 
-- Sab sahi → **🟢 GREEN FLAG** — agle phase pe chalo
+Har phase fix karne se pehle ye step follow karo:
+
+**A) Blueprint Capability Identify Karo:**
+- Blueprint me is phase ke liye kya describe kiya hai?
+- Ye capability goal hai
+
+**B) Industry Research Karo:**
+- ChatGPT, Claude, Grok, DeepSeek ye kaam kaise karte hai?
+- Kaunsi libraries use karti hai industry?
+- Kya approach follow karti hai?
+- Latency kitni hai?
+- Language support kitna hai?
+
+**C) Comparison Table Banao:**
+```
+| Aspect | Current Code | Industry Standard | Blueprint Goal | Action |
+|--------|--------------|-------------------|----------------|--------|
+| LLM use | YES/NO | YES/NO | Allowed/Not | KEEP/REMOVE |
+| Libraries | [list] | [list] | N/A | ADD/REMOVE |
+| Latency | X ms | Y ms | N/A | OPTIMIZE |
+| Languages | X | Y | "All" | IMPROVE |
+| Meaning safe | YES/NO | YES | YES | FIX |
+```
+
+**D) Decide Implementation:**
+- Agar industry standard Blueprint goal achieve karta hai → Industry follow karo
+- Agar industry standard Blueprint goal achieve NAHI karta → Custom approach banao
+- Agar unique feature hai (Memory Graph, Vedic tools) → Custom approach mandatory
+
+**Example — Phase 1.1 Linguistic Normalization:**
+```
+Blueprint Goal: "normalize, noise hatao, grammar try (internally)"
+Industry Approach: ftfy + unicodedata + regex (NO LLM)
+Comparison:
+| Aspect | Old Code | Industry | Blueprint | Action |
+|--------|----------|----------|-----------|--------|
+| LLM use | YES | NO | Not mentioned | REMOVE |
+| Meaning change risk | HIGH | NONE | Preserve | FIX |
+| Latency | +500ms | ~10ms | N/A | OPTIMIZE |
+| Languages | 55 | 100+ | "All" | IMPROVE |
+
+Decision: Follow industry (remove LLM, use libraries)
+```
+
+---
+
+### Step 12 — Green Flag Ya Issues
+
+- Sab sahi → **GREEN FLAG** — agle phase pe chalo
 
 - Kuch baaki → clearly batao kya karna hai, tab tak green flag nahi
 
