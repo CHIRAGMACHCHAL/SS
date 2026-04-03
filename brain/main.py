@@ -19,7 +19,7 @@ from memory.ingestion import (
 )
 import ftfy
 from langdetect import detect as lang_detect
-
+import json
 import re
 import numpy as np
 import logging
@@ -183,7 +183,9 @@ def implicit_memory_retrieval(vector_db, question, cognitive_profile=None, k=12)
 
         # Most connected chunk = emergent concept hub
         connectivity    = sim_matrix.sum(axis=1)
-        top_indices     = np.argsort(connectivity)[::-1][:4]
+
+        # Billing ka k directly use — koi override nahi
+        top_indices     = np.argsort(connectivity)[::-1][:k]
 
         emergent_concepts = []
         for idx in top_indices:
@@ -191,10 +193,11 @@ def implicit_memory_retrieval(vector_db, question, cognitive_profile=None, k=12)
             if concept and concept not in emergent_concepts:
                 emergent_concepts.append(concept)
 
-    except Exception:
+    except Exception as e:
+        logging.warning(f"[Phase 2.0] Emergent extraction failed: {e}")
         # Fallback — spaCy sentence first, no English split
         emergent_concepts = []
-        for doc in docs[:4]:
+        for doc in docs[:k]:
             if not doc.page_content.strip():
                 continue
             nlp_doc = _NLP(doc.page_content)
@@ -233,13 +236,21 @@ class CognitiveRouter:
         return "direct"
 
     def route_with_context(
-        self, *, question, intent, domains, required_depth, layer1_bundle=None
+        self, *, question, domains, required_depth, layer1_bundle=None, cognitive_profile=None
     ) -> str:
         """
         Full cognitive routing — Layer 1 numeric signals se.
         Blueprint: "Heavy logic kam, Control zyada"
         Koi string label match nahi — pure computed signals.
         """
+        # Blueprint: "Jarvis me phase 2.1 ka use nhi hota"
+        # cognitive_load_level "maximum" = Jarvis tier
+        # Brain ko tier nahi pata — config signal se
+        # Blueprint: "Jarvis me phase 2.1 ka use nhi hota — yahan phase 3,4,5 chalte hai"
+        if (cognitive_profile or {}).get("cognitive_load_level") == "maximum":
+            # Jarvis ke liye direct reasoning — Phase 3,4,5 handle karenge
+            return "reasoning"
+        
         DEPTH_INDEX = {
             "shallow": 0, "normal": 1, "moderate": 2,
             "deep": 3, "very_deep": 4, "ultra_deep": 5
@@ -247,6 +258,12 @@ class CognitiveRouter:
         depth_idx = DEPTH_INDEX.get(required_depth, 1)
         bundle    = layer1_bundle or {}
         sub_goals = bundle.get("sub_goals", [])
+
+        # Layer 1 Phase 1.2 signals — real power
+        is_analytical      = bundle.get("is_analytical", False)
+        has_verb           = bundle.get("has_verb", False)
+        has_entity         = bundle.get("has_entity", False)
+        graph_intent_score = bundle.get("graph_intent_score", 0.0)
 
         # Depth — numeric — deep/very_deep/ultra_deep sab cover
         if depth_idx >= 3:
@@ -259,6 +276,22 @@ class CognitiveRouter:
         # Domains count — multiple domains = cross-domain = reasoning
         if len(domains) >= 2:
             return "reasoning"
+
+        # REAL POWER: is_analytical → causal structure = reasoning
+        if is_analytical:
+            return "reasoning"
+    
+        # REAL POWER: graph strongly activated = memory
+        if graph_intent_score > 0.6:
+            return "memory"
+    
+        # REAL POWER: entity present, not analytical = retrieval
+        if has_entity and not is_analytical:
+            return "retrieval"
+    
+        # REAL POWER: verb heavy, no entity = direct execution
+        if has_verb and not has_entity:
+            return "direct"    
 
         # Shallow + single domain + few goals = retrieval
         if depth_idx <= 1 and len(domains) <= 1 and len(sub_goals) <= 1:
@@ -314,11 +347,14 @@ class CognitiveRouter:
         return has_causal or (verb_count >= 2 and entity_count == 0)
 
 
-def memory_lookup(vector_db, question, k=6):
+def memory_lookup(vector_db, question, cognitive_profile=None, k=6):
+    if cognitive_profile:
+        k = cognitive_profile.get("max_docs", k)
     docs = vector_db.similarity_search(question, k=k)
     if not docs:
         return None
-    return "\n".join(doc.page_content for doc in docs[:3])
+    # Billing ka k directly — hardcoded [:3] nahi
+    return "\n".join(doc.page_content for doc in docs[:k])
 
 
 # =========================
@@ -2131,7 +2167,7 @@ class TrainingEngine:
           "output": "..."
         }
         """
-        import json
+        
 
         samples = []
         with open(dataset_path, "r", encoding="utf-8") as f:
@@ -2552,10 +2588,140 @@ class IntentDecompositionEngine:
         
 
         # ════════════════════════════════════
-        # PHASE 1.0 — Raw Query Capture
+        # PHASE 1.0 — Raw Query Capture & Modality Separation
         # Blueprint: "User ne jo bola exact, bina interpretation"
+        # The true bulletproof entry point for all API formats.
         # ════════════════════════════════════
-        raw_query = user_query
+        
+        raw_text = ""
+        media_payloads = {}
+
+        # 1. Agar input EMPTY / Null hai
+        if user_query is None:
+            raw_text = ""
+            
+        # 2. Agar input STRING hai (Normal text ya JSON stringized payload)
+        elif isinstance(user_query, str):
+            try:
+                
+                parsed = json.loads(user_query)
+                if isinstance(parsed, dict):
+                    raw_text = str(parsed.get("text", ""))
+                    media_payloads = parsed.get("media", {})
+                    if not isinstance(media_payloads, dict):
+                        media_payloads = {"media": media_payloads}
+                    # Industry-style media support: if "media" key missing,
+                    # try common media keys so NLP routing can skip.
+                    if not media_payloads:
+                        candidate_media_keys = [
+                            "image", "photo", "picture",
+                            "image_bytes", "image_url", "image_path",
+                            "audio", "audio_bytes", "audio_url", "audio_path",
+                            "file", "file_bytes", "file_path", "files",
+                            "attachments", "attachment",
+                            "content_bytes", "content",
+                        ]
+                        for k in candidate_media_keys:
+                            if k in parsed and parsed.get(k) is not None:
+                                media_payloads[k] = parsed.get(k)
+                else:
+                    raw_text = user_query
+            except Exception:
+                raw_text = user_query  # Normal simple string
+                
+        # 3. Agar input DICTIONARY hai
+        elif isinstance(user_query, dict):
+            raw_text = str(user_query.get("text", ""))
+            media_payloads = user_query.get("media", {})
+            if not isinstance(media_payloads, dict):
+                media_payloads = {"media": media_payloads}
+            # Industry-style media support when caller doesn't wrap under "media".
+            if not media_payloads:
+                candidate_media_keys = [
+                    "image", "photo", "picture",
+                    "image_bytes", "image_url", "image_path",
+                    "audio", "audio_bytes", "audio_url", "audio_path",
+                    "file", "file_bytes", "file_path", "files",
+                    "attachments", "attachment",
+                    "content_bytes", "content",
+                ]
+                for k in candidate_media_keys:
+                    if k in user_query and user_query.get(k) is not None:
+                        media_payloads[k] = user_query.get(k)
+            
+        # 4. Agar input LIST hai (Multiple selected texts/history array)
+        elif isinstance(user_query, list):
+            texts = []
+            media_payloads_accum = {}
+            candidate_media_keys = [
+                "image", "photo", "picture",
+                "image_bytes", "image_url", "image_path",
+                "audio", "audio_bytes", "audio_url", "audio_path",
+                "file", "file_bytes", "file_path", "files",
+                "attachments", "attachment",
+                "content_bytes", "content",
+            ]
+            for item in user_query:
+                if isinstance(item, str):
+                    texts.append(item)
+                elif isinstance(item, dict):
+                    t = item.get("text", "")
+                    if t:
+                        texts.append(str(t))
+                    item_media = item.get("media", {})
+                    if isinstance(item_media, dict) and item_media:
+                        media_payloads_accum.update(item_media)
+                    elif not item_media:
+                        for k in candidate_media_keys:
+                            if k in item and item.get(k) is not None:
+                                media_payloads_accum[k] = item.get(k)
+            raw_text = " \n ".join(texts)
+            media_payloads = media_payloads_accum
+            
+        # 5. Agar input FASTAPI PYDANTIC CLASS object hai
+        elif hasattr(user_query, "model_dump") or hasattr(user_query, "dict"):
+            data = user_query.model_dump() if hasattr(user_query, "model_dump") else user_query.dict()
+            raw_text = str(data.get("text", ""))
+            media_payloads = data.get("media", {})
+            if not isinstance(media_payloads, dict):
+                media_payloads = {"media": media_payloads}
+            # Industry-style media support when caller doesn't wrap under "media".
+            if not media_payloads:
+                candidate_media_keys = [
+                    "image", "photo", "picture",
+                    "image_bytes", "image_url", "image_path",
+                    "audio", "audio_bytes", "audio_url", "audio_path",
+                    "file", "file_bytes", "file_path", "files",
+                    "attachments", "attachment",
+                    "content_bytes", "content",
+                ]
+                for k in candidate_media_keys:
+                    if k in data and data.get(k) is not None:
+                        media_payloads[k] = data.get(k)
+            
+        # 6. Agar seedha BYTES (Voice Note / File Binary) send ki gayi
+        elif isinstance(user_query, (bytes, bytearray)):
+            raw_text = ""
+            media_payloads = {"raw_file_bytes": user_query}
+
+        # 7. Agar input NUMBER (Integer ya Float/Decimal) hai
+        elif isinstance(user_query, (int, float)):
+            raw_text = str(user_query)     
+            
+        # 8. Fallback kisi aur anjaan data type ke liye
+        else:
+            raw_text = str(user_query)
+
+           
+
+        # State mein securely store karna
+        state["layer1_raw_query"] = raw_text
+        state["layer1_media"] = media_payloads
+
+        # Downstream NLP (Phase 1.1) ke liye strictly text pass karna
+        raw_query = raw_text
+
+
 
         # ════════════════════════════════════
         # PHASE 1.1 — Linguistic Normalization
@@ -2565,63 +2731,76 @@ class IntentDecompositionEngine:
         #
         # Har tier ke liye same — normalization common zaroori kaam hai.
         # Tier separation nahi — Brain: No subscription awareness.
+        # Brain = Code. LLM = Organ (Grammar fix LLM se nahi, Embedder se)
         # ════════════════════════════════════
 
-        # ── Step 1: Noise Removal ─────────────────────────────────────────
-        # Blueprint: "noise hatao"
-        # ftfy — Unicode corruption, broken encoding, mojibake sab fix karta hai
-        # Production grade — Wikipedia, CommonCrawl jaise large corpora use karte hain
-        cleaned = ftfy.fix_text(raw_query)
-        cleaned = re.sub(r'\s+', ' ', cleaned.strip())
+        # ── MEDIA-ONLY GUARD ─────────────────────────────────────────────────
+        # Phase 1.0 se agar sirf bytes/audio/image aaya tha → raw_query = ""
+        # Is case mein NLP skip karo, media flag set karo, Phase 1.7 bundle pe jao
+        if not raw_query.strip():
+            if media_payloads:
+                state["layer1_is_media_only"] = True
+                logging.info("[Layer1 Ph1.1] MEDIA-ONLY query — NLP skipped, routing to Vision/Audio tools")
+            else:
+                state["layer1_is_media_only"] = False
+                logging.warning("[Layer1 Ph1.1] EMPTY query received — all signals will be zero")
 
-        # ── Step 2: Language Detection ────────────────────────────────────
-        # 55+ languages — Europe, Asia, Middle East, South Asia sab covered
-        # Grammar fix ke liye LLM ko language batana zaroori hai
-        try:
-            detected_lang = lang_detect(cleaned)
-        except Exception:
-            detected_lang = "en"
-        logging.info(f"[Layer1 Ph1.1] detected_lang={detected_lang} | cleaned='{cleaned[:60]}'")
+            normalized_query = ""
+            detected_lang    = "unknown"
+            doc              = _NLP("")
+            query_emb        = _EMBEDDER.encode("")
+            entities         = []
+            noun_chunks      = []
 
-        # ── Step 3: Grammar Normalization ────────────────────────────────
-        # Blueprint: "grammar perfect karne ki koshish karo"
-        # Koi library 55+ languages mein grammar fix nahi kar sakti
-        # LLM ek baar call — sirf normalize, koi reasoning nahi
-        try:
-            normalized_query = llm_generate(
-                f"You are a multilingual text normalizer.\n"
-                f"Fix grammar, spelling, and shorthand of this query.\n"
-                f"Keep meaning exactly same. Do not add or remove information.\n"
-                f"Detected language: {detected_lang}\n"
-                f"Return ONLY the fixed query — no explanation, no extra text.\n\n"
-                f"Query: {cleaned}"
-            ).strip()
-            if not normalized_query:
-                normalized_query = cleaned
-        except Exception:
+        else:
+            state["layer1_is_media_only"] = False
+
+            # ── Step 1: Noise Removal ─────────────────────────────────────────
+            # Blueprint: "noise hatao"
+            # ftfy — Unicode corruption, broken encoding, mojibake sab fix karta hai
+            # Production grade — Wikipedia, CommonCrawl jaise large corpora use karte hain
+            cleaned = ftfy.fix_text(raw_query)
+            cleaned = re.sub(r'\s+', ' ', cleaned.strip())
+
+            # ── Step 2: Language Detection ────────────────────────────────────
+            # 55+ languages — Europe, Asia, Middle East, South Asia sab covered
+        
+            try:
+                detected_lang = lang_detect(cleaned)
+            except Exception:
+                detected_lang = "en"
+        
+            # ── Step 3: Grammar Normalization/Deterministic Normalization ────────────────────────────────
+            # Blueprint: "grammar perfect karne ki koshish karo"
+            # DANGEROUS LLM CALL REMOVED — Blueprint: "Brain = Code, LLM = Organ"
+            # LLM hallucinate karke user ka intent badal sakta tha.
+            # _EMBEDDER aur _NLP organically broken grammar ko semantic space mein
+            # handle karte hain — "plz hlp" aur "please help" ek hi vector point pe map honge.
             normalized_query = cleaned
 
-        # ── Step 4: spaCy parse on NORMALIZED query ───────────────────────
-        # Pehle normalize, phir parse — raw par nahi
-        doc = _NLP(normalized_query)
-        query_emb = _EMBEDDER.encode(normalized_query)
 
-        # ── Step 5: Linguistic signals ────────────────────────────────────
-        # max_nlp_power billing.py se — brain reads, never decides
-        max_nlp_power = config.get("max_nlp_power", 1)
-        entities = [(ent.text, ent.label_) for ent in doc.ents][:max_nlp_power]
-        noun_chunks = [chunk.text for chunk in doc.noun_chunks][:max_nlp_power]
+            # ── Step 4: spaCy parse on PURE exact query ───────────────────────
+            # Pehle normalize (noise hata), phir parse — raw par nahi
+            doc       = _NLP(normalized_query)
+            query_emb = _EMBEDDER.encode(normalized_query)
+
+
+            # ── Step 5: Linguistic signals (No Billing Limits) ────────────────
+            # Blueprint: Base perception billing se restrict nahi hoti
+            # Bilkul poora sentence AGI padhega — koi slice nahi
+            entities    = [(ent.text, ent.label_) for ent in doc.ents]
+            # noun_chunks depends on spaCy pipeline components; fallback to empty on failure.
+            try:
+                noun_chunks = [chunk.text for chunk in doc.noun_chunks]
+            except Exception:
+                noun_chunks = []
+            logging.info(
+                 f"[Layer1 Ph1.1] query='{normalized_query[:60]}' | "
+                 f"lang={detected_lang} | "
+                 f"entities={len(entities)} | nouns={len(noun_chunks)}"
+            )
         
         
-        
-
-        logging.info(
-            f"[Layer1 Ph1.1] original='{raw_query[:60]}' | "
-            f"normalized='{normalized_query[:60]}' | "
-            f"lang={detected_lang} | "
-            f"entities={entities} | nouns={noun_chunks[:3]}"
-        )
-
 
         # ════════════════════════════════════
         # PHASE 1.2 — Intent Type Detection
@@ -2635,6 +2814,17 @@ class IntentDecompositionEngine:
         is_analytical = any(t.dep_ in ("advcl", "ccomp", "expl") for t in doc)
         has_verb      = any(t.pos_ == "VERB" for t in doc)
         has_entity    = len(entities) >= 1
+
+        # Phase 1.2 (Thinking-Type signals)
+        # Blueprint: Phase 1.2 intent type detection is thinking-style, not answer routing.
+        # These are structural booleans/counts derived from spaCy universal tags (language-agnostic).
+        verb_count     = sum(1 for t in doc if t.pos_ == "VERB")
+        entity_count   = len(entities)
+        noun_count     = len(noun_chunks)
+
+        has_causal_structure   = any(t.dep_ in ["advcl", "mark", "csubj", "relcl"] for t in doc)
+        has_process_structure  = verb_count >= 2 and entity_count == 0
+        has_factual_structure  = entity_count >= 1 and noun_count >= 1
 
         # ── Memory Graph semantic activation — Phase 6 ke baad rich hoga ──
         graph_intent_score = 0.0
@@ -2862,6 +3052,14 @@ class IntentDecompositionEngine:
             # spaCy signals — Layer 2, 3 ke liye
             "entities":          entities,
             "noun_chunks":       noun_chunks,
+            # Phase 1.2 — thinking-style signals (computed; no hardcoded user keywords)
+            "verb_count":        verb_count,
+            "noun_count":        noun_count,
+            "has_causal_structure":  has_causal_structure,
+            "has_process_structure": has_process_structure,
+            "has_factual_structure": has_factual_structure,
+            # Phase 1.7 — reasoning plan (not answer): derived from hidden goals
+            "reasoning_plan":   sub_goals[:3],
             # billing config value — Layer 2 branching ke liye
             "max_goals":         max_goals,
             "is_analytical":       is_analytical,
@@ -3725,13 +3923,12 @@ async def main(
     # ================================
     
     router = CognitiveRouter()
-    CognitiveRouter.route_with_context()
     cognitive_route = router.route_with_context(
         question=question,
-        intent=intent_state,
         domains=layer1_bundle.get("domains", []),
         required_depth=layer1_bundle.get("required_depth", "normal"),
-        layer1_bundle=layer1_bundle    # ← numeric signals ke liye
+        layer1_bundle=layer1_bundle,    # ← numeric signals ke liye
+        cognitive_profile=cognitive_profile    # Jarvis bypass ke liye
     )
    
     logging.info(f"[Cognitive Route] → {cognitive_route}")
@@ -3992,7 +4189,7 @@ async def main(
     
     # ======= Routed Cognition ========    
     if final_route == "memory":
-        memory = memory_lookup(vector_db, question)
+        memory = memory_lookup(vector_db, question, cognitive_profile=cognitive_profile)
         if memory:
             final_prompt = f"""
 Use the following memory context to answer carefully:

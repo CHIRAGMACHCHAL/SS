@@ -94,6 +94,52 @@ Har phase ke liye alag se billing check karo:
 
 ---
 
+### Step 6.1 — Fix Ka Code Line By Line Explain Karo (MANDATORY)
+
+Jab bhi koi fix code diya jaye — usse **pehle** ek structured line-by-line explanation dena zaroori hai.
+
+**Kyun:** Bina samjhe code paste karna dangerous hai. Agar tumhe pata nahi ki line kya karti hai, to tum verify nahi kar sakte ki fix sahi hai ya nahi.
+
+**Format (har fix ke code block ke baad):**
+
+Line 1: `<exact code line>` → Ye line kya karti hai, kyun hai
+Line 2: `<exact code line>` → Ye line kya karti hai, kyun hai
+...aur aise har line ke liye
+
+**Rules:**
+- Koi line skip nahi hogi — chahe simple ho ya complex
+- Technical jargon avoid karo, plain Hindi + English mein samjhao
+- Har explanation mein ye batao: "Ye line kya karti hai" aur "Ye kyon zaroori hai"
+- Sirf comment lines ko explain karne ki zaroorat nahi — sirf executable code lines
+
+---
+
+
+### Step 6.5 — Before/After Alignment Delta (NEW — MANDATORY)
+
+Jab bhi tum koi change propose karo, usse pehle aur baad ka “delta” explicitly compare karo:
+
+**A) Old code kahan fail hota tha? (Blueprint violation map)**
+- Blueprint quote (verbatim)
+- Old behavior (code reality) — kya missing/galat tha
+- Risk: downstream crash / tier leakage / keyword dependency / placeholder capability
+
+**B) New code kya fix karta hai? (Blueprint alignment map)**
+- Same blueprint quote ke against new behavior
+- Kya real capability add hui (signals/structure), template/label nahi
+- Impact: callsite + downstream pe kya improvement aaya
+
+**Required output format:**
+
+Before/After Delta:
+- Blueprint anchor: "<quote>"
+- Old code reality: <1-2 lines>
+- Violation reason: <1-2 lines>
+- New code reality: <1-2 lines>
+- Why this aligns: <1-2 lines>
+
+---
+
 ### Step 7 — Reverification Table
 
 Fix ke baad blueprint se ek ek point verify karo:
@@ -103,6 +149,44 @@ Fix ke baad blueprint se ek ek point verify karo:
 |---|---|---|
 
 | Exact quote | Exact code behavior | ✅ / 🔴 |
+
+---
+
+### Step 7.5 — Reality Check: “Capabilities vs Templates” (NEW — MANDATORY)
+
+Blueprint ka intent sirf architecture draw karna nahi, **real capability** dena hai. Isliye har phase fix ke baad ek extra check karo:
+
+**Goal:** confirm karo ki system *actually* woh kaam kar raha hai, na ki sirf:
+- hardcoded answer templates se
+- string labels se
+- prompt headings se
+- deterministic canned “style blocks” se
+
+**Checkpoints (explicitly likho):**
+
+1) **Capability Trigger = Computed Signals (✅) / Keyword Match (🔴)**
+   - ✅ spaCy/heuristics/numeric signals (entities, verbs, relations, depth index, subgoal count, ambiguity score)
+   - 🔴 `if "how" in q` / `if intent == "research"` / `if tier == "free"` type branches
+
+2) **Capability Output = Structured Bundle (✅) / Decorated Text (🔴)**
+   - ✅ phase output ek typed bundle/schema ho (fields + confidence + reasons)
+   - 🔴 output sirf fancy text / headings / “Elaborate on:” templates ho
+
+3) **Language-Agnostic Behavior (✅) / English-anchored (🔴)**
+   - ✅ same intent Hindi/Sanskrit/French me bhi detect ho
+   - 🔴 logic English keywords/phrases pe dependent ho
+
+4) **Downstream Dependence = Numeric/Structural (✅) / String Equality (🔴)**
+   - ✅ downstream decisions numeric thresholds / structure pe ho
+   - 🔴 downstream `label == "x"` pe ho (car wali galti)
+
+**Report format (har fix ke baad):**
+
+Reality Check (Capabilities vs Templates):
+- Trigger signals computed? ✅/🔴 (lines)
+- Output bundle/schema real? ✅/🔴 (lines)
+- Language-agnostic? ✅/🔴 (lines)
+- Downstream string-equality avoided? ✅/🔴 (lines)
 
 ---
 
