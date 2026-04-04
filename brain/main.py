@@ -2593,133 +2593,45 @@ class IntentDecompositionEngine:
         # The true bulletproof entry point for all API formats.
         # ════════════════════════════════════
         
-        raw_text = ""
-        media_payloads = {}
+        # Phase 1.0 Integration - Blueprint Compliant
+        from phase1_0_integration import Phase1_0_Integration
+        phase1_int = Phase1_0_Integration()
+        
+        # Capture user query with all modalities
+        phase1_result = phase1_int.capture_user_query(user_query)
+        
+        # Phase 1.0 output extract karo — Phase 1.1 ke liye
+        raw_query      = phase1_result.get("raw_query", "")
+        media_payloads = phase1_result.get("media_payloads", {})
+        signal_type    = phase1_result.get("signal_type", "text")
 
-        # 1. Agar input EMPTY / Null hai
-        if user_query is None:
-            raw_text = ""
-            
-        # 2. Agar input STRING hai (Normal text ya JSON stringized payload)
-        elif isinstance(user_query, str):
-            try:
-                
-                parsed = json.loads(user_query)
-                if isinstance(parsed, dict):
-                    raw_text = str(parsed.get("text", ""))
-                    media_payloads = parsed.get("media", {})
-                    if not isinstance(media_payloads, dict):
-                        media_payloads = {"media": media_payloads}
-                    # Industry-style media support: if "media" key missing,
-                    # try common media keys so NLP routing can skip.
-                    if not media_payloads:
-                        candidate_media_keys = [
-                            "image", "photo", "picture",
-                            "image_bytes", "image_url", "image_path",
-                            "audio", "audio_bytes", "audio_url", "audio_path",
-                            "file", "file_bytes", "file_path", "files",
-                            "attachments", "attachment",
-                            "content_bytes", "content",
-                        ]
-                        for k in candidate_media_keys:
-                            if k in parsed and parsed.get(k) is not None:
-                                media_payloads[k] = parsed.get(k)
-                else:
-                    raw_text = user_query
-            except Exception:
-                raw_text = user_query  # Normal simple string
-                
-        # 3. Agar input DICTIONARY hai
-        elif isinstance(user_query, dict):
-            raw_text = str(user_query.get("text", ""))
-            media_payloads = user_query.get("media", {})
-            if not isinstance(media_payloads, dict):
-                media_payloads = {"media": media_payloads}
-            # Industry-style media support when caller doesn't wrap under "media".
-            if not media_payloads:
-                candidate_media_keys = [
-                    "image", "photo", "picture",
-                    "image_bytes", "image_url", "image_path",
-                    "audio", "audio_bytes", "audio_url", "audio_path",
-                    "file", "file_bytes", "file_path", "files",
-                    "attachments", "attachment",
-                    "content_bytes", "content",
-                ]
-                for k in candidate_media_keys:
-                    if k in user_query and user_query.get(k) is not None:
-                        media_payloads[k] = user_query.get(k)
-            
-        # 4. Agar input LIST hai (Multiple selected texts/history array)
-        elif isinstance(user_query, list):
-            texts = []
-            media_payloads_accum = {}
-            candidate_media_keys = [
-                "image", "photo", "picture",
-                "image_bytes", "image_url", "image_path",
-                "audio", "audio_bytes", "audio_url", "audio_path",
-                "file", "file_bytes", "file_path", "files",
-                "attachments", "attachment",
-                "content_bytes", "content",
-            ]
-            for item in user_query:
-                if isinstance(item, str):
-                    texts.append(item)
-                elif isinstance(item, dict):
-                    t = item.get("text", "")
-                    if t:
-                        texts.append(str(t))
-                    item_media = item.get("media", {})
-                    if isinstance(item_media, dict) and item_media:
-                        media_payloads_accum.update(item_media)
-                    elif not item_media:
-                        for k in candidate_media_keys:
-                            if k in item and item.get(k) is not None:
-                                media_payloads_accum[k] = item.get(k)
-            raw_text = " \n ".join(texts)
-            media_payloads = media_payloads_accum
-            
-        # 5. Agar input FASTAPI PYDANTIC CLASS object hai
-        elif hasattr(user_query, "model_dump") or hasattr(user_query, "dict"):
-            data = user_query.model_dump() if hasattr(user_query, "model_dump") else user_query.dict()
-            raw_text = str(data.get("text", ""))
-            media_payloads = data.get("media", {})
-            if not isinstance(media_payloads, dict):
-                media_payloads = {"media": media_payloads}
-            # Industry-style media support when caller doesn't wrap under "media".
-            if not media_payloads:
-                candidate_media_keys = [
-                    "image", "photo", "picture",
-                    "image_bytes", "image_url", "image_path",
-                    "audio", "audio_bytes", "audio_url", "audio_path",
-                    "file", "file_bytes", "file_path", "files",
-                    "attachments", "attachment",
-                    "content_bytes", "content",
-                ]
-                for k in candidate_media_keys:
-                    if k in data and data.get(k) is not None:
-                        media_payloads[k] = data.get(k)
-            
-        # 6. Agar seedha BYTES (Voice Note / File Binary) send ki gayi
-        elif isinstance(user_query, (bytes, bytearray)):
-            raw_text = ""
-            media_payloads = {"raw_file_bytes": user_query}
+        # Safety guard — None ya empty
+        if raw_query is None:
+            raw_query = ""
+            logging.warning("[Phase 1.0] None raw_query — empty string set")
 
-        # 7. Agar input NUMBER (Integer ya Float/Decimal) hai
-        elif isinstance(user_query, (int, float)):
-            raw_text = str(user_query)     
-            
-        # 8. Fallback kisi aur anjaan data type ke liye
+        # Modality detect karo — Llama 3.1 (text) ya Llama 4 (vision)
+        # signal_type "image" ya "multimodal" = vision route
+        # signal_type "text" = text route
+        if signal_type in ("image", "video", "multimodal"):
+            state["layer1_modality"] = "vision"   # Llama 4 route
+        elif signal_type in ("audio",):
+            state["layer1_modality"] = "audio"    # ASR route (future)
+        elif signal_type in ("document",):
+            state["layer1_modality"] = "document" # Doc extractor route (future)
         else:
-            raw_text = str(user_query)
+            state["layer1_modality"] = "text"     # Llama 3.1 route
 
-           
+        # State mein store karo
+        state["layer1_raw_query"]  = raw_query
+        state["layer1_media"]      = media_payloads
+        state["layer1_signal_type"] = signal_type
 
-        # State mein securely store karna
-        state["layer1_raw_query"] = raw_text
-        state["layer1_media"] = media_payloads
-
-        # Downstream NLP (Phase 1.1) ke liye strictly text pass karna
-        raw_query = raw_text
+        logging.info(
+            f"[Phase 1.0] signal_type={signal_type} | "
+            f"modality={state['layer1_modality']} | "
+            f"raw_query='{raw_query[:60]}'"
+        )
 
 
 
@@ -2799,7 +2711,6 @@ class IntentDecompositionEngine:
                  f"lang={detected_lang} | "
                  f"entities={len(entities)} | nouns={len(noun_chunks)}"
             )
-        
         
 
         # ════════════════════════════════════
