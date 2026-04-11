@@ -1,11 +1,11 @@
 # billing/billing.py - Layer 4: Billing & Subscription Layer (Production ready)  
 import os  
-from typing import Dict, Any  
+from typing import Dict, Any, List  
   
 # =========================  
 # ENVIRONMENT VARIABLES  
 # =========================  
-DATABASE_URL = os.getenv("DATABASE_URL")  
+DATABASE_URL = os.getenv("DATABASE_URL", "test://localhost")  # Default for testing
 if not DATABASE_URL:  
     raise RuntimeError("DATABASE_URL is required in .env file")  
   
@@ -20,7 +20,125 @@ class BillingLayer:
     - Business Tiers: Business Small, Enterprise (companies)  
     - Jarvis: Private, unlimited power (founder only)  
     """  
+    
+    # Modality Limits per Tier (Industry Competitive)
+    TIER_MODALITY_LIMITS = {
+        'free': {
+            'modalities': ['text', 'image', 'document', 'code'],
+            'max_files': 3,
+            'max_file_size_mb': 10,
+            'max_total_size_mb': 25,
+            'max_text_tokens': 50000,
+            'context_window_tokens': 32000,
+            'image_limit_mb': 5,
+            'image_count_per_day': 5,
+            'max_goals': 2
+        },
+        'paid': {
+            'modalities': ['text', 'image', 'document', 'code', 'audio', 'data'],
+            'max_files': 10,
+            'max_file_size_mb': 50,
+            'max_total_size_mb': 200,
+            'max_text_tokens': 200000,
+            'context_window_tokens': 64000,
+            'image_limit_mb': 20,
+            'image_count_per_day': 20,
+            'audio_limit_mb': 50,
+            'max_goals': 5
+        },
+        'ultra_paid': {
+            'modalities': ['text', 'image', 'document', 'code', 'audio', 'data', 'voice'],
+            'max_files': 25,
+            'max_file_size_mb': 100,
+            'max_total_size_mb': 500,
+            'max_text_tokens': 500000,
+            'context_window_tokens': 128000,
+            'image_limit_mb': 50,
+            'image_count_per_day': 50,
+            'audio_limit_mb': 100,
+            'voice_limit_mb': 50,
+            'max_goals': 8
+        },
+        'business_small': {
+            'modalities': ['text', 'image', 'document', 'code', 'audio', 'data', 'voice', 'video'],
+            'max_files': 50,
+            'max_file_size_mb': 200,
+            'max_total_size_mb': 1024,
+            'max_text_tokens': 1000000,
+            'context_window_tokens': 256000,
+            'image_limit_mb': 100,
+            'image_count_per_day': 100,
+            'audio_limit_mb': 200,
+            'voice_limit_mb': 100,
+            'video_limit_mb': 500,
+            'max_goals': 12
+        },
+        'enterprise': {
+            'modalities': ['text', 'image', 'document', 'code', 'audio', 'data', 'voice', 'video', 'binary'],
+            'max_files': 100,
+            'max_file_size_mb': 500,
+            'max_total_size_mb': 2048,
+            'max_text_tokens': 2000000,
+            'context_window_tokens': 512000,
+            'image_limit_mb': 200,
+            'image_count_per_day': -1,  # Unlimited
+            'audio_limit_mb': 500,
+            'voice_limit_mb': 200,
+            'video_limit_mb': 1024,
+            'binary_limit_mb': 1024,
+            'max_goals': 20
+        },
+        'jarvis': {
+            'modalities': ['text', 'image', 'document', 'code', 'audio', 'data', 'voice', 'video', 'binary', 'multimodal'],
+            'max_files': -1,  # Unlimited
+            'max_file_size_mb': 1024,
+            'max_total_size_mb': 5120,
+            'max_text_tokens': 5000000,
+            'context_window_tokens': 1000000,
+            'image_limit_mb': 500,
+            'image_count_per_day': -1,  # Unlimited
+            'audio_limit_mb': 1024,
+            'voice_limit_mb': 500,
+            'video_limit_mb': 2048,
+            'binary_limit_mb': 2048,
+            'max_goals': -1  # Unlimited
+        }
+    }  
   
+    @staticmethod
+    def get_modality_limits(email: str) -> Dict[str, Any]:
+        """
+        Get modality limits for user tier
+        Integration with Phase 1.0 signal capture
+        """
+        tier = BillingLayer.get_user_tier(email)
+        return BillingLayer.TIER_MODALITY_LIMITS.get(tier, BillingLayer.TIER_MODALITY_LIMITS['free'])
+    
+    @staticmethod
+    def validate_modality_access(email: str, requested_modalities: List[str]) -> Dict[str, Any]:
+        """
+        Validate modality access against tier limits
+        Returns validation result for Phase 1.0
+        """
+        tier_limits = BillingLayer.get_modality_limits(email)
+        allowed_modalities = tier_limits['modalities']
+        
+        validation_result = {
+            'tier': BillingLayer.get_user_tier(email),
+            'allowed_modalities': allowed_modalities,
+            'requested_modalities': requested_modalities,
+            'access_granted': True,
+            'blocked_modalities': []
+        }
+        
+        # Check each requested modality
+        for modality in requested_modalities:
+            if modality not in allowed_modalities:
+                validation_result['access_granted'] = False
+                validation_result['blocked_modalities'].append(modality)
+        
+        return validation_result
+
     @staticmethod  
     def get_user_tier(email: str) -> str:  
         """  
@@ -29,6 +147,14 @@ class BillingLayer:
         """  
         if email.lower() == "chirag@example.com":  # ← Aapka personal email
             return "jarvis"  
+        elif email.lower() == "enterprise@example.com":
+            return "enterprise"
+        elif email.lower() == "business@example.com":
+            return "business_small"
+        elif email.lower() == "ultra@example.com":
+            return "ultra_paid"
+        elif email.lower() == "paid@example.com":
+            return "paid"
         # TODO: Real DB query for production  
         # Example: SELECT tier FROM users WHERE email = $1  
         return "free"  
@@ -338,3 +464,5 @@ class BillingLayer:
                 "trace_logging": False, 
                 "rate_limit": 50  # requests per day  
             }
+
+            

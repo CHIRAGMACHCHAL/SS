@@ -1,3 +1,4 @@
+# Add any files or folders you'd like to exclude from indexing.
 .env
 __pycache__/
 *.pyc
@@ -23,6 +24,3 @@ blueprintreference.md
 missing_formats_analysis.md
 TODO.md
 Blueprint_copy_for_read.txt
-phase1_0_signal_capture_engine.py
-phase1_5_validation_layer.py
-test_phase1_0_analysis.py

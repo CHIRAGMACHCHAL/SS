@@ -345,3 +345,37 @@ Agar kisi capability ko real power nahi mila → us phase ko **GREEN FLAG mat do
 > **Purana kharab mat karo** — naya fix batane se pehle hamesha verify karo ki Layer 1 se abhi tak fix hue saare phases intact hain. Ek bhi cheez toot gayi to pehle wo theek karo.
 
 > **Car wali galti zero tolerance** — har fix ke baad explicitly check karo. Ek bhi English keyword user query pe match nahi hona chahiye. spaCy + numeric signals — yahi sahi tarika hai.
+
+### 🔥 NAYE INDUSTRY-LEVEL STEPS (v2.0)
+
+**Step 12: Automated Test Suite + Regression Test**  
+- Har phase ke liye dedicated test file banao (`test_phaseX_Y.py`).  
+- Minimum 8-10 test cases (Hindi, Sanskrit, English, different tiers, edge cases).  
+- Purane saare fixed phases ke tests bhi run karo (regression).  
+- Assertion: output structure, no string labels, capability signals, etc.
+
+**Step 13: Performance & Cost Benchmark**  
+- Latency, token usage, memory usage, CPU/GPU measure karo.  
+- Free vs Ultra vs Jarvis tier ke liye alag benchmark.  
+- Question: “Kya ye phase production load pe scalable hai?”
+
+**Step 14: Security & Privacy Review**  
+- Tier separation leak to nahi?  
+- Jarvis private data leak risk?  
+- Prompt injection, jailbreak, data exfiltration check.  
+- Indian DPDP Act quick compliance checklist.
+
+**Step 15: Documentation + Traceability Update**  
+- PHASE_X_Y.md file update karo (what was fixed, why, before/after delta).  
+- Blueprint ke against mapping likho.  
+- Future team member (ya khud 2 mahine baad) ko samajh aaye.
+
+---
+
+### Final Rule
+
+**Green Flag tabhi do jab Step 1 se Step 15 sab pass ho jaaye.**
+
+**Green Flag = Production Ready for that Phase**
+
+---
