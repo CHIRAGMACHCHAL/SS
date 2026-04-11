@@ -1,21 +1,93 @@
-.env
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Qdrant storage
+data/qdrant_storage/
+
+# Training data (keep structure, not data)
+data/scriptures/public/*.pdf
+data/scriptures/private/*.pdf
+data/training/datasets/*.jsonl
+data/training/models/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter
+.ipynb_checkpoints
+
+# System
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Secrets
+*.pem
+*.key
+secrets/
+
+# Compiled
 *.pyc
 *.pyo
-*.pyd
-.DS_Store
-node_modules/
-dist/
-build/
-chatgpt.PY
-b.py
-h.py
-.cursorignore
-Blueprint.pdf
-table (1).csv
-table.csv
-tools.csv
-AGI SOFTWARES
-ref.py
-MAIN_PY_DEEP_ANALYSIS.md
-COMPREHENSIVE_AGI_PLAN.md
