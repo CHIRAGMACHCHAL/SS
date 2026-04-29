@@ -1,0 +1,529 @@
+ab dekho ye tha hamara plan - "Free Tier - limits- 25 queries/day 
+            model - gpt-5.4-nano
+            after 70% usage: gpt-5-nano
+Paid Tier(₹699)- limits - 40 queries/day 
+	          model - 0 to 70% usage: gpt-5.4-mini
+ 		  70 to 100% usage : gpt-5-mini 
+Ultra Paid Tier (₹1499)-  limits - 60 queries/day 
+		  	  model - 0 to 50% usage: gpt-5.4
+ 		          50 to 80% usage : gpt-5.4-mini
+			  80 to 100% usage: gpt-5-mini"
+uske baad iss plan ko aur bhi profitable aur controllabale banane ke liye upgrade kiya to ye rha upgraded new plan - "HYBRID MODEL- 
+🧠 FINAL HYBRID MODEL (BEST FOR YOU)
+🔹 Free Tier (same रखो, minor tweak)
+25 queries/day
+Primary:
+- Light → gpt-5-nano
+- Medium → gpt-5.4-nano
+- Heavy → gpt-5.4-nano
+Usage control:
+- after 70% → force gpt-5-nano
+👉 यहाँ पुराना + नया दोनों merge
+🔹 Paid Tier (₹699) — optimized
+40 queries/day
+Routing:
+Light   → gpt-5-mini
+Medium  → gpt-5.4-mini
+Heavy   → gpt-5.4-mini (limited)
+Usage control:
+after 70% → gpt-5-mini only
+🔥 Ultra Tier — IMPORTANT FIX (₹1499 ही रखो)
+तुम सही हो — ₹2499 early stage में risky है
+👉 यहाँ मैं अपना correction दे रहा हूँ
+❗ Ultra Tier Final (market-friendly + safe)
+Price: ₹1499 (keep same)
+Limit: 60 queries/day
+Routing:
+Light   → gpt-5.4-mini
+Medium  → gpt-5.4 (controlled)
+Heavy   → gpt-5.4 (LIMITED)"
+lekin uske baad iss new upgraded plan ko aur jyada profitable and controllable banane ke liye upgrade kiya to ye rha new upgrade version - "
+👉 time-based allocation + query-based optimization + hidden cost control
+
+🧠 MERA CORE IDEA 
+1. Two-layer control system
+Layer 1 → Time-based (hard boundary)
+
+* Free/Paid:
+   * 0–70% → Primary phase
+   * 70–100% → Secondary phase
+* Ultra:
+   * 0–50% → Primary (gpt-5.4)
+   * 50–80% → gpt-5.4-mini
+   * 80–100% → gpt-5-mini
+👉 Ye fixed infra protection layer hai
+Layer 2 → Query-based (smart optimization inside phase)
+👉 Primary phase ke andar:
+
+* Light query → downgraded model
+* Medium/Heavy → primary model
+👉 Secondary phase ke andar:
+
+* Jo assigned model hai → wahi
+* (optional) light → aur cheaper fallback
+2. Heavy query control (IMPORTANT)
+👉 Tumhara logic:
+
+* Heavy queries limit hongi (tier-wise)
+* Limit cross → treat as “medium”
+* Model same reh sakta hai
+* BUT tokens / reasoning reduce
+👉 Yeh exactly correct hai.
+🔥 WHY THIS IS STRONG (REALITY CHECK)
+MAIN 3 cheezon ko ek saath solve kar raha hoon:
+✅ 1. User Experience
+
+* Medium/Heavy → always strong model
+* User ko lagta hai system powerful hai
+✅ 2. Cost Control
+
+* Light queries → cheap model
+* Heavy → limited + optimized
+✅ 3. Predictability
+
+* Time-phase ensures:
+   * worst-case cost bounded hai
+⚠️ EK IMPORTANT MICRO-FIX (MISS MAT KARNA)
+Abhi maine bola:
+heavy limit cross → medium treat
+👉 Ye correct hai BUT ek cheez aur add karo:
+❗ Fix:
+Heavy → medium convert karte waqt:
+
+* reasoning effort ↓
+* tokens ↓
+* NOT just label change
+👉 warna cost same rahegi
+🔧 FINAL CLEAN EXECUTION LOGIC( ye neeche doiya gya code logic sirf example ke roop me hai )
+STEP 1: Identify phase
+
+```python
+if usage < threshold:
+    phase = "primary"
+else:
+    phase = "secondary"
+
+```
+
+STEP 2: Identify query type
+
+```python
+light / medium / heavy
+
+```
+
+STEP 3: Apply logic
+🔹 PRIMARY PHASE
+
+```python
+if query == "light":
+    use secondary_model   # cost बचाओ
+
+elif query == "medium":
+    use primary_model
+
+elif query == "heavy":
+    if heavy_count < limit:
+        use primary_model
+    else:
+        use primary_model
+        reduce_reasoning()
+        reduce_tokens()
+
+```
+
+🔹 SECONDARY PHASE
+
+```python
+use assigned downgraded model
+
+if query == "light":
+    optionally go even cheaper
+
+```
+
+📊 HEAVY LIMIT 
+👉 (soft control, hard block nahi)
+
+* Free → ~3–5 heavy/day
+* Paid → ~6–10 heavy/day
+* Ultra → ~10–18 heavy/day
+📊 TOKEN CONTROL
+
+* Free → 700–900
+* Paid → 1100–1400
+* Ultra → 1400–1800
+🧠 FINAL VERDICT
+👉 Mera plan:
+
+* ❌ naive nahi hai
+* ❌ overengineered nahi hai
+* ✅ industry-grade hai
+👉 Maine correct balance achieve kiya:
+
+* primary respect ✔
+* cost control ✔
+* no harsh UX ✔
+🧨 STRAIGHT ANSWER
+👉 “Kaisa laga plan?”
+👉 Yahi implement karo. Change mat karo.
+Ab jo log fail hote hain wo yahin:
+
+* ya to over-optimize karte hain
+* ya implement hi nahi karte"
+to ab hamara plan ussi logic pr chalega aur ab ye rha aur bhi clean way me likha hua same plan , Main mera Hybrid Plan + mera logic + correct guardrails ko merge karke FINAL LOCKED PLAN de raha hoon — clean, structured, Claude-ready.
+🧠 FINAL HYBRID PLAN (LOCKED VERSION)
+🔹 1. FREE TIER (Acquisition Layer)
+Limits
+
+* 25 queries/day
+Phase Split
+
+* 0–70% (0–18 queries) → Primary Phase
+* 70–100% (19–25 queries) → Secondary Phase
+🔸 PRIMARY PHASE LOGIC (0–70%)
+Routing (Query-based)
+
+* Light → gpt-5-nano
+* Medium → gpt-5.4-nano ✅ PRIMARY
+* Heavy → gpt-5.4-nano ✅ PRIMARY
+Heavy Control
+
+* Soft limit: 3–5 heavy/day
+* After limit:
+   * still use gpt-5.4-nano
+   * BUT:
+      * reasoning ↓
+      * tokens ↓
+Token Control
+
+* Light → 400–700
+* Medium → 700–900
+* Heavy → 800–900 (after limit ↓ ~700)
+🔸 SECONDARY PHASE (70–100%)
+
+* ALL queries → gpt-5-nano
+Reason
+👉 Free = onboarding + taste 👉 Primary visible rehna chahiye
+🔹 2. PAID TIER (₹699) — Profit Engine
+Limits
+
+* 40 queries/day
+Phase Split
+
+* 0–70% (0–28 queries) → Primary Phase
+* 70–100% (29–40 queries) → Secondary Phase
+🔸 PRIMARY PHASE LOGIC
+Routing
+
+* Light → gpt-5-mini
+* Medium → gpt-5.4-mini ✅ PRIMARY
+* Heavy → gpt-5.4-mini ✅ PRIMARY
+Heavy Control
+
+* Soft limit: 6–10 heavy/day
+* After limit:
+   * same model (gpt-5.4-mini)
+   * BUT:
+      * reasoning → medium
+      * tokens ↓
+Token Control
+
+* Light → 600–900
+* Medium → 1000–1300
+* Heavy → 1200–1400 (after limit ↓ ~1000–1100)
+🔸 SECONDARY PHASE
+
+* ALL → gpt-5-mini
+Reason
+👉 Yeh tier profit generate karega 👉 Heavy allowed hai, but optimized
+🔥 3. ULTRA TIER (₹1499) — Controlled Power
+Limits
+
+* 60 queries/day
+Phase Split
+
+* 0–50% (0–30 queries) → Primary Phase (gpt-5.4)
+* 50–80% (31–48 queries) → Mid Phase (gpt-5.4-mini)
+* 80–100% (49–60 queries) → Final Phase (gpt-5-mini)
+🔸 PRIMARY PHASE (0–50%)
+Routing
+
+* Light → gpt-5.4-mini
+* Medium → gpt-5.4 ✅ PRIMARY
+* Heavy → gpt-5.4 ✅ PRIMARY
+Heavy Control
+
+* Soft limit: 10–18 heavy/day
+After limit:
+
+* same model (gpt-5.4)
+* BUT:
+   * reasoning → medium
+   * depth ↓
+   * tokens ↓
+Token Control
+
+* Light → 800–1200
+* Medium → 1300–1700
+* Heavy → 1500–1800 (after limit ↓ ~1300)
+🔸 MID PHASE (50–80%)
+
+* ALL → gpt-5.4-mini
+Optimization
+
+* Light queries → optionally gpt-5-mini
+🔸 FINAL PHASE (80–100%)
+
+* ALL → gpt-5-mini
+Reason
+👉 Premium feel maintained 👉 Cost controlled without visible downgrade
+⚙️ GLOBAL RULES (VERY IMPORTANT)
+✅ Rule 1 — Primary Respect
+
+* Medium + Heavy → always primary (inside primary phase)
+✅ Rule 2 — Light Optimization
+
+* Light queries = cost बचाने का tool
+* Always cheaper model allowed
+✅ Rule 3 — NO HARD BLOCK
+
+* Heavy queries:
+   * never rejected
+   * only optimized
+✅ Rule 4 — Control = Hidden
+
+* Model switch ❌ (avoid)
+* Instead use:
+   * reasoning ↓
+   * tokens ↓
+   * verbosity ↓
+✅ Rule 5 — Phase = Hard Boundary
+
+* Phase cross → strict downgrade
+🧠 FINAL SUMMARY (ONE LINE)
+👉 Time-based model allocation + Query-based optimization + Soft heavy control = profitable AGI
+🚀 READY FOR IMPLEMENTATION
+👉 Ye plan:
+
+* conflict-free hai
+* Claude-friendly hai
+* scalable hai
+* profit-safe hai
+" aur hume token toh decide kr liye lekin ab hume ye bhi to dkhehna hai ki kaun si user ki query light treat ki jaaygi , kaun si medium , kaun si heavy , kyu ki tbhi to work krega hamara plan , to hum industyr me jo hota hai , wo karega , query type pata krne ke liye  , kya hume koi logic likhna haoga , kyuki dekho hamar model plam poora isi pr depedn hai ki query kaise hai aur uspo ho mainwe jo layers banayio hai jo tumpe pahse, primary secondary phase hai wo chalega aur agar nhi to maine industry standar approach li hai  haalnaki plan final hai lekin ab ye  dekhna ki query kaun si categprey me aati hai, isliye - "🧠 2. CORE PROBLEM: QUERY CLASSIFICATION
+jo maine bola:
+👉 “Kaise decide karein ki query light/medium/heavy hai?”
+🧠 3. INDUSTRY ME KYA HOTA HAI
+Real systems 3 cheezein combine karte hain:
+✅ (A) Rule-based signals (fast, cheap)
+✅ (B) Semantic understanding (embedding / LLM)
+✅ (C) Existing pipeline signals (tumhare case me Layer 1)
+
+🧠 4. BEST PART (MERA ADVANTAGE)
+Mere paas already hai:
+
+*  Intent decomposition 
+*  Depth detection 
+*  Sub-query breakdown 
+👉 Matlab: mera classifier industry se better ho sakta hai
+🚀 FINAL ANSWER
+👉 Tumhe alag system banane ki zarurat nahi  👉 Bas:
+
+🧠 ONE LINE TRUTH
+👉 “Jo system intent samajhta hai, wahi sahi cost control kar sakta hai.” ab mera plan final ho chuka hai aur iss plan ko main ek file me daal kr project section me agi ki baaki file jke saath uplaod bhu  krdunag taaki tumhe yaad rhe
+
+================================================================
+==========================================================
+====================================================
+===================================
+
+Hamara jo plan hai wo tb hi implement kr sklte hai jb hume query pata ho ki light hai, ya medium hai, ya heavy hai,ussi hisaab se hamara hybrid plan implement kiya jayga AGI me , to query light hai, ya medium hai, ya heavy hai wo pata krne ke liye ye rhi industry wali approach, queires classification ki-
+
+🧠 INDUSTRY APPROACH (QUERY CLASSIFICATION)
+
+🔹 Core Philosophy
+
+👉 “Query ko label nahi karte, uski solving cost estimate karte hain.”
+
+
+---
+
+🔹 1. Multi-Signal Analysis (Single rule kabhi use nahi hota)
+
+Industry systems 4 primary signals dekhte hain:
+
+(A) Intent Depth
+
+Kitni gehrai chahiye answer me
+
+fact vs explanation vs deep reasoning
+
+
+
+---
+
+(B) Task Structure (Most Important)
+
+Single step → simple
+
+Multi-step → complex
+
+
+👉 Yeh sabse strong signal hota hai
+
+
+---
+
+(C) Reasoning Requirement
+
+Direct answer?
+
+Ya chain-of-thought / derivation / planning?
+
+
+
+---
+
+(D) Context Requirement
+
+External data chahiye?
+
+Long context read karna hai?
+
+
+
+---
+
+🔹 2. Signal → Complexity Score
+
+Industry internally aisa kuch karti hai:
+
+low signals → low cost
+medium signals → medium cost
+high signals → high cost
+
+👉 Fir map hota hai:
+
+low → light
+medium → medium
+high → heavy
+
+
+---
+
+🔹 3. NO LANGUAGE DEPENDENCE
+
+Industry:
+
+❌ keywords use nahi karti
+
+❌ word count use nahi karti
+
+❌ language-specific rules nahi
+
+
+👉 Sab kuch semantic + structure based hota hai
+
+
+---
+
+🔹 4. Two Common Methods
+
+✅ Method 1: Rule + Signals (Most common)
+
+depth
+
+steps
+
+reasoning
+
+context
+
+
+👉 fast + cheap + predictable
+
+
+---
+
+✅ Method 2: Small Model Classifier
+
+ek chhota model (cheap LLM)
+
+jo query ko classify karta hai
+
+
+👉 zyada accurate but extra cost
+
+
+---
+
+🔹 5. Confidence-based Escalation (Advanced)
+
+Industry ka secret trick:
+
+1. cheap model try karo
+2. agar:
+   - answer weak hai
+   - ya confidence low hai
+→ upgrade model
+
+👉 isse cost control hota hai
+
+
+---
+
+🔹 6. No Hard Labels
+
+Important:
+
+👉 System internally “light/medium/heavy” store nahi karta
+👉 Wo store karta hai:
+
+complexity score
+
+reasoning need
+
+steps count
+
+
+👉 labels sirf routing ke liye use hote hain
+
+
+---
+
+🔹 7. Real Flow
+
+Query
+ ↓
+Intent understanding
+ ↓
+Signals extract
+ ↓
+Complexity score
+ ↓
+Model routing
+
+
+---
+
+🧠 FINAL TRUTH
+
+👉 Industry kabhi yeh nahi dekhti:
+
+query chhoti hai ya badi
+
+kaun si language hai
+
+
+👉 Wo yeh dekhti hai: “Is query ko solve karne me kitna compute lagega?”
+
+
+---
+
+🧠 ONE LINE SUMMARY
+
+👉 “Classification = compute estimation problem, not text classification problem.”
+
+
+---
+

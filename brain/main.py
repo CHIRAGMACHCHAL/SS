@@ -1,8 +1,6 @@
 # brain/main.py
 import os
 import logging
-from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Union
 from pathlib import Path
 import uuid
 import csv
@@ -23,19 +21,14 @@ from langdetect import detect as lang_detect
 import json
 import re
 import numpy as np
-import logging
 import spacy
 from sentence_transformers import SentenceTransformer
-from datetime import datetime, timezone
-from enum import Enum
-# from phase1_0_signal_capture_engine import create_signal_capture_engine, SignalData, QueryFormat
 import sys
 import hashlib
 from typing import Dict, Any, Union, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime, timezone
-
 from billing.billing import BillingLayer
 
 class SignalType(Enum):
@@ -72,7 +65,7 @@ MAGIC_BYTE_SIGNATURES = {
     b'\xff\xfb': (SignalType.AUDIO, 'audio/mpeg'),
     b'\x00\x00\x00\x18ftyp': (SignalType.VIDEO, 'video/mp4'),
     b'\x1a\x45\xdf\xa3': (SignalType.VIDEO, 'video/webm'),
-    b'RIFF': (SignalType.AUDIO, 'audio/wav'), # Fallback for WAV
+    # b'RIFF': (SignalType.AUDIO, 'audio/wav'), # Fallback for WAV
     b'#!/': (SignalType.CODE, 'text/x-script'),
 }
 
@@ -334,833 +327,1068 @@ def create_signal_capture_engine() -> Phase1_0_SignalCaptureEngine:
 signal_engine = Phase1_0_SignalCaptureEngine()    
 
 
-# ════════════════════════════════════
-# PHASE 1.1 — LINGUISTIC & MULTIMODAL NORMALIZATION
-# Blueprint: "normalize, noise hatao, grammar perfect karne ki koshish karo"
-# Industry: Real processing with ftfy, langdetect, and spacy
-# ════════════════════════════════════
+# ════════════════════════════════════════════════════════════════
+# PHASE 1.1 — MULTIMODAL NORMALIZATION ENGINE
+# Blueprint: "Har modality ko processable canonical form mein convert karna,
+#             bina intent distort kiye"
+# Industry:  Real processing — Pillow, librosa, pypdf, pytesseract, ast
+#            Language-agnostic — spaCy xx_ent_wiki_sm (50+ languages)
+#            Tier-aware — config ke modalities list se, size se nahi
+# ════════════════════════════════════════════════════════════════
 
-class LinguisticNormalizer:
+
+
+@dataclass
+class NormalizedSignal:
     """
-    Blueprint: "Unicode fix (ftfy), whitespace cleanup, language detection, grammar normalization"
-    Industry: LLM-free semantic stability for all 6 tiers
+    Phase 1.1 ka output. Phase 1.2 aur aage yahi use karta hai.
+    canonical_text: downstream ke liye processable text form
+    media_metadata: image/audio/video se extracted signals
+    linguistic_signals: spaCy se — language agnostic
     """
+    modality          : str
+    canonical_text    : str                    # har modality ka text form
+    raw_data          : Any                    # original as-is
+    language          : str                    # langdetect result
+    linguistic_signals: Dict[str, Any]         # spaCy signals
+    media_metadata    : Dict[str, Any]         # image/audio/video info
+    processing_steps  : List[str]              # kya kya hua
+    success           : bool        = True
+    error             : Optional[str] = None
+
+
+class Phase1_1_NormalizationEngine:
+    """
+    Blueprint: "normalize, noise hatao, grammar perfect karne ki koshish karo"
+    Ek hi class — sab modalities handle karta hai.
+    Tier-aware: tier_limits['modalities'] list se check — size se nahi.
+    Language-agnostic: xx_ent_wiki_sm multilingual spaCy model.
+    No placeholders — real libraries, real processing.
+    """
+
+    # Standard image size for normalization
+    _IMG_STD_SIZE = (1024, 1024)
+    # Audio sample rate standard
+    _AUDIO_SR     = 16000
+    # Whisper model — load lazily
+    _whisper_model = None
+
     def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm")
         self.logger = logging.getLogger(__name__)
 
-    def normalize(self, text: str) -> Dict[str, Any]:
-        """Normalize text and extract linguistic signals"""
-        # 1. Unicode fix
-        cleaned_text = ftfy.fix_text(text)
-        
-        # 2. Whitespace cleanup
-        cleaned_text = " ".join(cleaned_text.split())
-        
-        # 3. Language detection
+    # ── Public entry point ────────────────────────────────────────────────
+
+    def normalize(
+        self,
+        raw_data    : Any,
+        signal_type : str,
+        tier_limits : Dict[str, Any],
+        content_type: str = "text/plain",
+    ) -> NormalizedSignal:
+        """
+        Main entry. raw_data + signal_type → NormalizedSignal.
+        Tier check: kya yeh modality is tier ko allowed hai?
+        """
+        allowed = tier_limits.get("modalities", ["text"])
+        if signal_type not in allowed:
+            return NormalizedSignal(
+                modality           = signal_type,
+                canonical_text     = "",
+                raw_data           = raw_data,
+                language           = "unknown",
+                linguistic_signals = {},
+                media_metadata     = {},
+                processing_steps   = [],
+                success            = False,
+                error              = f"Modality '{signal_type}' not allowed at this tier",
+            )
+
+        dispatch = {
+            "text"      : self._normalize_text,
+            "code"      : self._normalize_code,
+            "data"      : self._normalize_data,
+            "image"     : self._normalize_image,
+            "audio"     : self._normalize_audio,
+            "voice"     : self._normalize_voice,
+            "video"     : self._normalize_video,
+            "document"  : self._normalize_document,
+            "binary"    : self._normalize_binary,
+            "multimodal": self._normalize_multimodal,
+        }
+
+        handler = dispatch.get(signal_type, self._normalize_binary)
         try:
-            lang = lang_detect(cleaned_text)
-        except:
+            return handler(raw_data, tier_limits)
+        except Exception as e:
+            self.logger.error(f"[Ph1.1] {signal_type} normalization failed: {e}")
+            return NormalizedSignal(
+                modality           = signal_type,
+                canonical_text     = str(raw_data)[:500] if raw_data else "",
+                raw_data           = raw_data,
+                language           = "unknown",
+                linguistic_signals = {},
+                media_metadata     = {"error": str(e)},
+                processing_steps   = ["fallback"],
+                success            = False,
+                error              = str(e),
+            )
+
+    # ── TEXT ─────────────────────────────────────────────────────────────
+
+    def _normalize_text(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
+        """
+        Blueprint: "Unicode fix (ftfy), whitespace cleanup, language detection"
+        spaCy xx_ent_wiki_sm — multilingual, language-agnostic NER + POS
+        """
+        steps = []
+
+        # 1. Ensure string
+        text = raw_data if isinstance(raw_data, str) else str(raw_data)
+
+        # 2. Unicode fix — mojibake, broken encoding sab theek karo
+        text = ftfy.fix_text(text)
+        steps.append("ftfy_unicode_fix")
+
+        # Global repetition normalize — language agnostic Unicode-aware
+        # "!!!!" → "!!", "हाँ!!!" → "हाँ!!", koi bhi script
+        import re as _re
+        text = _re.sub(r'(.)\1{2,}', r'\1\1', text)
+        
+        # ALL CAPS normalize — sirf agar poora text upper hai (emotional shouting)
+        # unicodedata se check — script-agnostic
+        if text.upper() == text and len(text.split()) > 2:
+            text = text[0].upper() + text[1:].lower()
+
+        # 3. Whitespace normalize — tabs, multiple spaces, newlines
+        text = re.sub(r'\s+', ' ', text.strip())
+        steps.append("whitespace_normalize")
+
+        # 4. Language detection — 50+ languages, Hindi bhi Sanskrit bhi
+        try:
+            lang = lang_detect(text)
+        except Exception:
             lang = "unknown"
-            
-        # 4. Spacy signals (LLM-free)
-        doc = self.nlp(cleaned_text[:1000]) # Limit for performance
+        steps.append("langdetect")
+
+        # 5. spaCy — xx_ent_wiki_sm is multilingual
+        #    dep_/pos_/ents — language agnostic tags
+        doc    = _NLP(text[:2000])
+        ents   = [(e.text, e.label_) for e in doc.ents]
+        chunks = [c.text for c in doc.noun_chunks]
+
         signals = {
-            "entity_count": len(doc.ents),
-            "verb_count": sum(1 for token in doc if token.pos_ == "VERB"),
-            "noun_count": sum(1 for token in doc if token.pos_ == "NOUN"),
-            "avg_word_length": np.mean([len(token.text) for token in doc]) if len(doc) > 0 else 0,
-            "sentence_count": sum(1 for _ in doc.sents)
+            "entity_count"   : len(ents),
+            "entities"       : ents,
+            "noun_chunks"    : chunks,
+            "verb_count"     : sum(1 for t in doc if t.pos_ == "VERB"),
+            "noun_count"     : sum(1 for t in doc if t.pos_ == "NOUN"),
+            "sentence_count" : sum(1 for _ in doc.sents),
+            "has_causal"     : any(
+                t.dep_ in ("advcl", "mark", "csubj", "relcl")
+                for t in doc
+            ),
+            "is_analytical"  : any(
+                t.dep_ in ("advcl", "ccomp", "expl")
+                for t in doc
+            ),
+            "has_entity"     : len(ents) >= 1,
+            "has_verb"       : any(t.pos_ == "VERB" for t in doc),
         }
-        
-        return {
-            "normalized_query": cleaned_text,
-            "language": lang,
-            "linguistic_signals": signals,
-            "success": True
-        }
+        steps.append("spacy_multilingual_signals")
 
-class IndustryLevelModalityCleaners:
-    """Industry-level modality processing with tier-aware capabilities"""
-    
-    def __init__(self):
-        self.text_normalizer = LinguisticNormalizer()
-        self.image_cleaner = ImageNormalizer()
-        self.audio_cleaner = AudioNormalizer()
-        self.video_cleaner = VideoNormalizer()
-        self.document_cleaner = DocumentNormalizer()
-        self.code_cleaner = CodeNormalizer()
-        self.data_cleaner = DataNormalizer()
-        self.voice_cleaner = VoiceNormalizer()
-        self.binary_cleaner = BinaryNormalizer()
-        self.multimodal_cleaner = MultimodalNormalizer()
-    
-    def normalize_modality(self, signal_data: Any, modality_type: str, user_tier: str) -> CleanedSignal:
-        """
-        Normalize modality based on tier capabilities
-        Blueprint: Tier-aware processing with limits enforcement
-        """
-        
-        # Get tier limits from central BillingLayer
-        tier_limits = BillingLayer.TIER_MODALITY_LIMITS.get(user_tier, BillingLayer.TIER_MODALITY_LIMITS['free'])
-        
-        # Check if modality is allowed for this tier
-        if modality_type not in tier_limits['modalities']:
-            return CleanedSignal(
-                modality_type=modality_type,
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=f"Modality {modality_type} not allowed for tier {user_tier}"
-            )
-        
-        # Route to appropriate cleaner
-        if modality_type == 'text':
-            norm_result = self.text_normalizer.normalize(str(signal_data))
-            return CleanedSignal(
-                modality_type='text',
-                cleaned_content=norm_result['normalized_query'],
-                metadata={'language': norm_result['language'], 'signals': norm_result['linguistic_signals']},
-                processing_info={'method': 'ftfy_spacy_normalization'},
-                tier_limits_applied=tier_limits,
-                success=norm_result['success']
-            )
+        return NormalizedSignal(
+            modality           = "text",
+            canonical_text     = text,
+            raw_data           = raw_data,
+            language           = lang,
+            linguistic_signals = signals,
+            media_metadata     = {},
+            processing_steps   = steps,
+        )
 
-        cleaner_map = {
-            'image': self.image_cleaner,
-            'audio': self.audio_cleaner,
-            'video': self.video_cleaner,
-            'document': self.document_cleaner,
-            'code': self.code_cleaner,
-            'data': self.data_cleaner,
-            'voice': self.voice_cleaner,
-            'binary': self.binary_cleaner,
-            'multimodal': self.multimodal_cleaner
-        }
-        
-        cleaner = cleaner_map.get(modality_type)
-        if not cleaner:
-            return CleanedSignal(
-                modality_type=modality_type,
-                cleaned_content=signal_data,
-                metadata={},
-                processing_info={'method': 'passthrough'},
-                tier_limits_applied=tier_limits,
-                success=True
-            )
-        
-        # Apply tier-aware cleaning
-        return cleaner.clean(signal_data, tier_limits)
+    # ── IMAGE ─────────────────────────────────────────────────────────────
 
-class ImageNormalizer:
-    """Industry-level image processing with tier-aware capabilities"""
-    
-    def clean(self, image_data: Any, tier_limits: Dict[str, Any]) -> CleanedSignal:
+    def _normalize_image(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
         """
-        Blueprint: "resolution normalization, format standardization, noise reduction, optional OCR"
-        Industry: Real image processing with PIL and OpenCV
+        Blueprint: "resolution normalization, format standardization,
+                    noise reduction, optional OCR"
+        Pillow: resize + RGB normalize + format detect
+        pytesseract: OCR — Devanagari/Sanskrit bhi (tier-aware)
         """
-        
+        steps  = []
+        meta   = {}
+
         try:
-            # For now, simulate processing with enhanced metadata
-            # In production, would use PIL, OpenCV, pytesseract
-            
-            processing_info = {'method': 'enhanced_metadata'}
-            metadata = {}
-            
-            # Simulate image processing based on tier
-            if tier_limits.get('image_limit_mb', 5) >= 20:  # Paid and above
-                processing_info['resized'] = True
-                metadata['width'] = 1920
-                metadata['height'] = 1080
-            
-            if tier_limits.get('image_limit_mb', 5) >= 50:  # Ultra and above
-                processing_info['noise_reduction'] = True
-                processing_info['enhancement'] = True
-            
-            if tier_limits.get('image_limit_mb', 5) >= 200:  # Enterprise and Jarvis
-                processing_info['ocr_applied'] = True
-                metadata['has_text'] = True
-                metadata['extracted_text_length'] = 150
-            
-            metadata.update({
-                'format': 'JPEG',
-                'size_bytes': len(image_data) if isinstance(image_data, bytes) else 1024,
-                'dominant_colors': [(255, 255, 255), (0, 0, 0), (128, 128, 128)]
-            })
-            
-            return CleanedSignal(
-                modality_type='image',
-                cleaned_content=image_data,
-                metadata=metadata,
-                processing_info=processing_info,
-                tier_limits_applied=tier_limits,
-                success=True
+            from PIL import Image as PILImage
+            import io as _io
+
+            # Decode bytes → PIL Image
+            if isinstance(raw_data, bytes):
+                img = PILImage.open(_io.BytesIO(raw_data))
+            elif isinstance(raw_data, str):
+                import base64 as _b64
+                img = PILImage.open(_io.BytesIO(_b64.b64decode(raw_data + "==")))
+            else:
+                raise ValueError(f"Cannot decode image from {type(raw_data)}")
+
+            meta["original_format"] = img.format or "unknown"
+            meta["original_size"]   = list(img.size)
+            meta["original_mode"]   = img.mode
+            steps.append("image_decode")
+
+            # Convert to RGB — removes alpha, standardizes channels
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+                steps.append("rgb_convert")
+
+            # Resize to standard — LANCZOS is best quality downscale
+            if img.size[0] > self._IMG_STD_SIZE[0] or img.size[1] > self._IMG_STD_SIZE[1]:
+                img.thumbnail(self._IMG_STD_SIZE, PILImage.LANCZOS)
+                steps.append("resize_standard")
+
+            meta["normalized_size"] = list(img.size)
+
+            # Dominant color extraction — numpy mean per channel
+            import numpy as _np
+            arr               = _np.array(img)
+            meta["mean_rgb"]  = [round(float(arr[:,:,c].mean()), 2)
+                                  for c in range(arr.shape[2])]
+            meta["std_rgb"]   = [round(float(arr[:,:,c].std()), 2)
+                                  for c in range(arr.shape[2])]
+            steps.append("color_analysis")
+
+            # OCR — tier-aware: business_small+ only
+            # pytesseract supports 100+ languages including Devanagari
+            ocr_text = ""
+            ocr_allowed = set(["business_small", "enterprise", "jarvis"])
+            # Check via max_files as proxy (business_small = 50+)
+            max_files_val = tier_limits.get("max_files", 3)
+            if max_files_val == -1 or max_files_val >= 50:
+                try:
+                    import pytesseract
+                    # lang='hin+eng+san' — Hindi + English + Sanskrit
+                    ocr_text = pytesseract.image_to_string(
+                        img, lang="hin+eng+san"
+                    ).strip()
+                    meta["ocr_text"]   = ocr_text
+                    meta["ocr_length"] = len(ocr_text)
+                    steps.append("pytesseract_ocr_multilingual")
+                except ImportError:
+                    self.logger.warning("[Ph1.1 IMAGE] pytesseract not installed")
+                except Exception as e:
+                    self.logger.warning(f"[Ph1.1 IMAGE] OCR failed: {e}")
+
+            # canonical_text: OCR text agar mila, warna image description
+            w, h   = img.size
+            aspect = round(w / max(h, 1), 3)
+            canonical = (
+                f"IMAGE w={w} h={h} aspect={aspect} "
+                f"format={meta['original_format']} mode=RGB"
             )
-            
-        except Exception as e:
-            return CleanedSignal(
-                modality_type='image',
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=str(e)
+            if ocr_text:
+                canonical += f" | OCR: {ocr_text[:300]}"
+
+            # Run text signals on canonical
+            ling = self._text_signals(canonical)
+
+            return NormalizedSignal(
+                modality           = "image",
+                canonical_text     = canonical,
+                raw_data           = raw_data,
+                language           = ling["language"],
+                linguistic_signals = ling["signals"],
+                media_metadata     = meta,
+                processing_steps   = steps,
             )
 
-class AudioNormalizer:
-    """Industry-level audio processing with tier-aware capabilities"""
-    
-    def clean(self, audio_data: Any, tier_limits: Dict[str, Any]) -> CleanedSignal:
+        except ImportError:
+            return self._pillow_missing_fallback(raw_data, steps)
+
+    def _pillow_missing_fallback(self, raw_data, steps):
+        size = len(raw_data) if isinstance(raw_data, bytes) else 0
+        return NormalizedSignal(
+            modality           = "image",
+            canonical_text     = f"IMAGE size={size}bytes (Pillow not installed)",
+            raw_data           = raw_data,
+            language           = "unknown",
+            linguistic_signals = {},
+            media_metadata     = {"error": "Pillow not installed", "size_bytes": size},
+            processing_steps   = steps + ["fallback_no_pillow"],
+            success            = False,
+            error              = "Pillow not installed",
+        )
+
+    # ── AUDIO ─────────────────────────────────────────────────────────────
+
+    def _normalize_audio(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
         """
-        Blueprint: "speech-to-text (ASR), noise filtering, speaker clarity enhancement"
-        Industry: Real audio processing with librosa and speech recognition
+        Blueprint: "speech-to-text (ASR), noise filtering, speaker clarity"
+        librosa: waveform load + RMS normalize + Log-Mel spectrogram stats
+        Whisper: multilingual ASR — Sanskrit bhi detect karta hai (tier-aware)
         """
-        
+        steps = []
+        meta  = {}
+
         try:
-            processing_info = {'method': 'enhanced_metadata'}
-            metadata = {}
-            
-            # Simulate audio processing based on tier
-            if tier_limits.get('audio_limit_mb', 0) >= 50:  # Paid and above
-                processing_info['speech_to_text'] = True
-                metadata['has_speech'] = True
-                metadata['extracted_text_length'] = 200
-            
-            if tier_limits.get('audio_limit_mb', 0) >= 200:  # Enterprise and Jarvis
-                processing_info['noise_filtering'] = True
-                processing_info['speaker_enhancement'] = True
-            
-            metadata.update({
-                'size_bytes': len(audio_data) if isinstance(audio_data, bytes) else 2048,
-                'quality_enhanced': tier_limits.get('audio_limit_mb', 0) >= 50
-            })
-            
-            return CleanedSignal(
-                modality_type='audio',
-                cleaned_content=audio_data,
-                metadata=metadata,
-                processing_info=processing_info,
-                tier_limits_applied=tier_limits,
-                success=True
+            import librosa as _librosa
+            import io as _io
+            import numpy as _np
+
+            # Decode bytes → waveform
+            if isinstance(raw_data, bytes):
+                buf = _io.BytesIO(raw_data)
+            else:
+                raise ValueError("Audio must be bytes")
+
+            # librosa load — mono, 16kHz standard
+            y, sr = _librosa.load(buf, sr=self._AUDIO_SR, mono=True)
+            steps.append("librosa_load_16khz_mono")
+
+            meta["duration_sec"]   = round(float(len(y) / sr), 2)
+            meta["sample_rate"]    = sr
+            meta["sample_count"]   = len(y)
+
+            # RMS normalize — volume standardize karo
+            rms = _np.sqrt(_np.mean(y ** 2))
+            if rms > 0:
+                y = y / rms
+            steps.append("rms_normalize")
+            meta["rms_before"]     = round(float(rms), 6)
+
+            # Log-Mel Spectrogram — 80 mel bands, Whisper-compatible
+            # Tone, pitch, Sanskrit shlok ka uchcharan — sab preserve
+            mel = _librosa.feature.melspectrogram(
+                y=y, sr=sr, n_mels=80, hop_length=160, n_fft=400
             )
-            
-        except Exception as e:
-            return CleanedSignal(
-                modality_type='audio',
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=str(e)
+            log_mel = _librosa.power_to_db(mel, ref=_np.max)
+            meta["mel_shape"]      = list(log_mel.shape)
+            meta["mel_mean"]       = round(float(log_mel.mean()), 4)
+            meta["mel_std"]        = round(float(log_mel.std()), 4)
+
+            # Spectral centroid — brightness of audio
+            centroid = _librosa.feature.spectral_centroid(y=y, sr=sr)
+            meta["spectral_centroid_mean"] = round(float(centroid.mean()), 2)
+            steps.append("log_mel_spectrogram")
+
+            # Zero Crossing Rate — roughness/noisiness
+            zcr = _librosa.feature.zero_crossing_rate(y)
+            meta["zcr_mean"]       = round(float(zcr.mean()), 4)
+
+            # Tempo estimate
+            try:
+                tempo, _ = _librosa.beat.beat_track(y=y, sr=sr)
+                meta["tempo_bpm"]  = round(float(tempo), 1)
+            except Exception:
+                meta["tempo_bpm"]  = None
+
+            steps.append("acoustic_features")
+
+            # ASR — Whisper multilingual (paid+ tier)
+            transcript = ""
+            if tier_limits.get("audio_limit_mb", 0) >= 50:
+                transcript = self._whisper_transcribe(raw_data)
+                if transcript:
+                    meta["transcript"]         = transcript
+                    meta["transcript_length"]  = len(transcript)
+                    steps.append("whisper_multilingual_asr")
+
+            canonical = (
+                f"AUDIO duration={meta['duration_sec']}s "
+                f"sr={sr}Hz mel_mean={meta['mel_mean']} "
+                f"centroid={meta['spectral_centroid_mean']}Hz"
+            )
+            if transcript:
+                canonical += f" | TRANSCRIPT: {transcript[:400]}"
+
+            ling = self._text_signals(canonical)
+
+            return NormalizedSignal(
+                modality           = "audio",
+                canonical_text     = canonical,
+                raw_data           = raw_data,
+                language           = ling["language"],
+                linguistic_signals = ling["signals"],
+                media_metadata     = meta,
+                processing_steps   = steps,
             )
 
-class VideoNormalizer:
-    """Industry-level video processing with tier-aware capabilities"""
-    
-    def clean(self, video_data: Any, tier_limits: Dict[str, Any]) -> CleanedSignal:
+        except ImportError:
+            return self._librosa_missing_fallback("audio", raw_data, steps)
+
+    # ── VOICE ─────────────────────────────────────────────────────────────
+
+    def _normalize_voice(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
         """
-        Blueprint: "keyframe extraction, audio separation, frame-level understanding signals"
-        Industry: Real video processing with OpenCV
+        Voice = live stream — WebRTC Opus chunks.
+        Same processing as audio lekin chunked.
+        Pitch + tone preservation critical (Vedic mantra uccharan).
         """
-        
+        steps = ["voice_stream_detected"]
+        meta  = {}
+
         try:
-            processing_info = {'method': 'enhanced_metadata'}
-            metadata = {}
-            
-            # Simulate video processing based on tier
-            if tier_limits.get('video_limit_mb', 0) >= 500:  # Business and above
-                processing_info['keyframe_extraction'] = True
-                metadata['keyframe_count'] = 5
-            
-            if tier_limits.get('video_limit_mb', 0) >= 1024:  # Enterprise and Jarvis
-                processing_info['audio_separation'] = True
-                processing_info['frame_analysis'] = True
-            
-            metadata.update({
-                'size_bytes': len(video_data) if isinstance(video_data, bytes) else 4096,
-                'has_keyframes': tier_limits.get('video_limit_mb', 0) >= 500,
-                'audio_extracted': tier_limits.get('video_limit_mb', 0) >= 1024
-            })
-            
-            return CleanedSignal(
-                modality_type='video',
-                cleaned_content=video_data,
-                metadata=metadata,
-                processing_info=processing_info,
-                tier_limits_applied=tier_limits,
-                success=True
+            import librosa as _librosa
+            import io as _io
+            import numpy as _np
+
+            buf = _io.BytesIO(raw_data) if isinstance(raw_data, bytes) else raw_data
+            y, sr = _librosa.load(buf, sr=self._AUDIO_SR, mono=True)
+            steps.append("librosa_load_voice_chunk")
+
+            # RMS
+            rms = _np.sqrt(_np.mean(y ** 2))
+            if rms > 0:
+                y = y / rms
+            meta["rms"] = round(float(rms), 6)
+
+            # Mel — smaller window for real-time
+            mel = _librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40)
+            log_mel = _librosa.power_to_db(mel, ref=_np.max)
+            meta["mel_mean"] = round(float(log_mel.mean()), 4)
+            meta["duration_sec"] = round(float(len(y) / sr), 3)
+            steps.append("voice_mel_spectrogram")
+
+            # Pitch detection — F0 fundamental frequency
+            try:
+                f0, _, _ = _librosa.pyin(
+                    y, fmin=_librosa.note_to_hz('C2'),
+                    fmax=_librosa.note_to_hz('C7')
+                )
+                valid_f0 = f0[~_np.isnan(f0)] if f0 is not None else []
+                meta["pitch_mean_hz"] = round(float(_np.mean(valid_f0)), 2) if len(valid_f0) > 0 else 0.0
+                steps.append("pitch_detection_f0")
+            except Exception:
+                meta["pitch_mean_hz"] = 0.0
+
+            # ASR for voice (ultra_paid+)
+            transcript = ""
+            if tier_limits.get("voice_limit_mb", 0) >= 50:
+                transcript = self._whisper_transcribe(raw_data)
+                if transcript:
+                    meta["transcript"] = transcript
+                    steps.append("whisper_voice_asr")
+
+            canonical = (
+                f"VOICE chunk={meta['duration_sec']}s "
+                f"pitch={meta['pitch_mean_hz']}Hz "
+                f"rms={meta['rms']}"
             )
-            
-        except Exception as e:
-            return CleanedSignal(
-                modality_type='video',
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=str(e)
+            if transcript:
+                canonical += f" | LIVE: {transcript[:200]}"
+
+            ling = self._text_signals(canonical)
+
+            return NormalizedSignal(
+                modality           = "voice",
+                canonical_text     = canonical,
+                raw_data           = raw_data,
+                language           = ling["language"],
+                linguistic_signals = ling["signals"],
+                media_metadata     = meta,
+                processing_steps   = steps,
             )
 
-class DocumentNormalizer:
-    """Industry-level document processing with tier-aware capabilities"""
-    
-    def clean(self, document_data: Any, tier_limits: Dict[str, Any]) -> CleanedSignal:
+        except ImportError:
+            return self._librosa_missing_fallback("voice", raw_data, steps)
+
+    # ── VIDEO ─────────────────────────────────────────────────────────────
+
+    def _normalize_video(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
         """
-        Blueprint: "text extraction (PDF -> text), structure parsing"
-        Industry: Real document processing with PyPDF2 and OCR
+        Blueprint: "keyframe extraction, audio separation, frame-level signals"
+        OpenCV: frame extraction + motion detection
+        Tier-aware: business_small+ only gets video
         """
-        
+        steps = []
+        meta  = {}
+
         try:
-            processing_info = {'method': 'enhanced_metadata'}
-            metadata = {}
-            
-            # Simulate document processing based on tier
-            if tier_limits.get('max_files', 3) >= 10:  # Paid and above
-                processing_info['text_extraction'] = True
-                metadata['extracted_text_length'] = 500
-                metadata['page_count'] = 10
-            
-            if tier_limits.get('max_files', 3) >= 50:  # Business and above
-                processing_info['structure_parsing'] = True
-                metadata['has_images'] = True
-                metadata['has_tables'] = True
-                metadata['document_type'] = 'structured'
-            
-            metadata.update({
-                'size_bytes': len(document_data) if isinstance(document_data, bytes) else 3072,
-                'has_structure': tier_limits.get('max_files', 3) >= 50
-            })
-            
-            return CleanedSignal(
-                modality_type='document',
-                cleaned_content=document_data,
-                metadata=metadata,
-                processing_info=processing_info,
-                tier_limits_applied=tier_limits,
-                success=True
+            import cv2 as _cv2
+            import tempfile as _tmp
+            import os as _os
+            import numpy as _np
+
+            # Write to temp file — OpenCV needs file path
+            with _tmp.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+                f.write(raw_data if isinstance(raw_data, bytes) else b"")
+                tmp_path = f.name
+
+            cap = _cv2.VideoCapture(tmp_path)
+
+            meta["fps"]          = round(cap.get(_cv2.CAP_PROP_FPS), 2)
+            meta["frame_count"]  = int(cap.get(_cv2.CAP_PROP_FRAME_COUNT))
+            meta["width"]        = int(cap.get(_cv2.CAP_PROP_FRAME_WIDTH))
+            meta["height"]       = int(cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
+            meta["duration_sec"] = round(
+                meta["frame_count"] / max(meta["fps"], 1), 2
             )
-            
-        except Exception as e:
-            return CleanedSignal(
-                modality_type='document',
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=str(e)
+            steps.append("cv2_video_open")
+
+            # Keyframe extraction — every N frames
+            n_keyframes   = 5
+            keyframe_interval = max(1, meta["frame_count"] // n_keyframes)
+            keyframes     = []
+            frame_idx     = 0
+            prev_gray     = None
+            motion_scores = []
+
+            while cap.isOpened() and len(keyframes) < n_keyframes:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if frame_idx % keyframe_interval == 0:
+                    gray = _cv2.cvtColor(frame, _cv2.COLOR_BGR2GRAY)
+                    # Motion score vs previous keyframe
+                    if prev_gray is not None:
+                        diff = _np.abs(
+                            gray.astype(_np.float32) - prev_gray.astype(_np.float32)
+                        )
+                        motion_scores.append(round(float(diff.mean()), 3))
+                    prev_gray = gray
+                    keyframes.append(frame_idx)
+                frame_idx += 1
+
+            cap.release()
+            _os.unlink(tmp_path)
+
+            meta["keyframes_extracted"] = keyframes
+            meta["motion_scores"]       = motion_scores
+            meta["avg_motion"]          = round(
+                float(sum(motion_scores) / len(motion_scores)), 3
+            ) if motion_scores else 0.0
+            steps.append("keyframe_extraction")
+            steps.append("motion_detection")
+
+            canonical = (
+                f"VIDEO duration={meta['duration_sec']}s "
+                f"fps={meta['fps']} "
+                f"res={meta['width']}x{meta['height']} "
+                f"keyframes={len(keyframes)} "
+                f"avg_motion={meta['avg_motion']}"
             )
 
-class CodeNormalizer:
-    """Industry-level code processing with tier-aware capabilities"""
-    
-    def clean(self, code_data: Any, tier_limits: Dict[str, Any]) -> CleanedSignal:
+            ling = self._text_signals(canonical)
+
+            return NormalizedSignal(
+                modality           = "video",
+                canonical_text     = canonical,
+                raw_data           = raw_data,
+                language           = "unknown",
+                linguistic_signals = ling["signals"],
+                media_metadata     = meta,
+                processing_steps   = steps,
+            )
+
+        except ImportError:
+            size = len(raw_data) if isinstance(raw_data, bytes) else 0
+            return NormalizedSignal(
+                modality           = "video",
+                canonical_text     = f"VIDEO size={size}bytes (OpenCV not installed)",
+                raw_data           = raw_data,
+                language           = "unknown",
+                linguistic_signals = {},
+                media_metadata     = {"error": "OpenCV not installed", "size_bytes": size},
+                processing_steps   = steps + ["fallback_no_cv2"],
+                success            = False,
+                error              = "OpenCV not installed",
+            )
+
+    # ── DOCUMENT ──────────────────────────────────────────────────────────
+
+    def _normalize_document(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
+        """
+        Blueprint: "text extraction (PDF→text), structure parsing"
+        pypdf: real PDF text extract
+        Structure: headings, tables detect
+        """
+        steps = []
+        meta  = {}
+
+        try:
+            from pypdf import PdfReader
+            import io as _io
+
+            buf    = _io.BytesIO(raw_data if isinstance(raw_data, bytes) else str(raw_data).encode())
+            reader = PdfReader(buf)
+            steps.append("pypdf_open")
+
+            meta["page_count"] = len(reader.pages)
+            pages_text         = []
+
+            for i, page in enumerate(reader.pages):
+                try:
+                    t = page.extract_text() or ""
+                    pages_text.append(t)
+                except Exception:
+                    pages_text.append("")
+
+            full_text = "\n".join(pages_text).strip()
+            steps.append("text_extraction")
+
+            meta["char_count"]  = len(full_text)
+            meta["word_count"]  = len(full_text.split())
+
+            # Structure detection — headings (short ALL-CAPS lines)
+            lines       = full_text.split("\n")
+            headings    = [
+                l.strip() for l in lines
+                if 3 < len(l.strip()) < 80 and l.strip().isupper()
+            ]
+            meta["heading_count"]   = len(headings)
+            meta["sample_headings"] = headings[:5]
+            meta["has_tables"]      = "\t" in full_text or "  |  " in full_text
+            steps.append("structure_detection")
+
+            # Normalize extracted text
+            norm   = ftfy.fix_text(full_text)
+            norm   = re.sub(r'\s+', ' ', norm.strip())
+
+            # Language detect on first 500 chars
+            try:
+                lang = lang_detect(norm[:500])
+            except Exception:
+                lang = "unknown"
+            steps.append("langdetect")
+
+            ling = self._text_signals(norm[:2000])
+
+            return NormalizedSignal(
+                modality           = "document",
+                canonical_text     = norm[:4000],   # downstream ke liye reasonable limit
+                raw_data           = raw_data,
+                language           = lang,
+                linguistic_signals = ling["signals"],
+                media_metadata     = meta,
+                processing_steps   = steps,
+            )
+
+        except ImportError:
+            return NormalizedSignal(
+                modality           = "document",
+                canonical_text     = "DOCUMENT (pypdf not installed)",
+                raw_data           = raw_data,
+                language           = "unknown",
+                linguistic_signals = {},
+                media_metadata     = {"error": "pypdf not installed"},
+                processing_steps   = ["fallback_no_pypdf"],
+                success            = False,
+                error              = "pypdf not installed",
+            )
+
+    # ── CODE ──────────────────────────────────────────────────────────────
+
+    def _normalize_code(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
         """
         Blueprint: "syntax parsing, structure extraction"
-        Industry: Real code processing with AST
+        ast: Python syntax parse — stdlib, no extra install
+        Language detect: shebang + keywords — no English string matching on user query
         """
-        
-        try:
-            code_text = code_data.decode('utf-8') if isinstance(code_data, bytes) else str(code_data)
-            
-            processing_info = {'method': 'enhanced_metadata'}
-            metadata = {}
-            
-            # Basic syntax parsing for all tiers
-            try:
-                ast.parse(code_text)
-                metadata['valid_syntax'] = True
-                processing_info['syntax_parsing'] = True
-            except SyntaxError:
-                metadata['valid_syntax'] = False
-                processing_info['syntax_parsing'] = True
-                processing_info['syntax_errors'] = True
-            
-            # Advanced structure parsing for higher tiers
-            if tier_limits.get('max_files', 3) >= 10:  # Paid and above
-                lines = code_text.split('\n')
-                metadata.update({
-                    'line_count': len(lines),
-                    'function_count': code_text.count('def ') + code_text.count('function '),
-                    'class_count': code_text.count('class '),
-                    'import_count': code_text.count('import ') + code_text.count('from ')
-                })
-                processing_info['structure_extraction'] = True
-            
-            metadata.update({
-                'size_bytes': len(code_text.encode('utf-8')),
-                'language': self._detect_language(code_text),
-                'complexity_score': self._calculate_complexity(code_text)
-            })
-            
-            return CleanedSignal(
-                modality_type='code',
-                cleaned_content=code_text,
-                metadata=metadata,
-                processing_info=processing_info,
-                tier_limits_applied=tier_limits,
-                success=True
-            )
-            
-        except Exception as e:
-            return CleanedSignal(
-                modality_type='code',
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=str(e)
-            )
-    
-    def _detect_language(self, code_text: str) -> str:
-        """Detect programming language"""
-        if 'def ' in code_text or 'import ' in code_text:
-            return 'python'
-        elif 'function ' in code_text or 'const ' in code_text:
-            return 'javascript'
-        elif 'public class ' in code_text or 'import java' in code_text:
-            return 'java'
-        else:
-            return 'unknown'
-    
-    def _calculate_complexity(self, code_text: str) -> int:
-        """Calculate basic complexity score"""
-        complexity = 0
-        complexity += code_text.count('if ')
-        complexity += code_text.count('for ')
-        complexity += code_text.count('while ')
-        complexity += code_text.count('try ')
-        return complexity
+        steps     = []
+        meta      = {}
 
-class DataNormalizer:
-    """Industry-level data processing with tier-aware capabilities"""
-    
-    def clean(self, data_data: Any, tier_limits: Dict[str, Any]) -> CleanedSignal:
+        code_text = (
+            raw_data.decode("utf-8", errors="replace")
+            if isinstance(raw_data, bytes)
+            else str(raw_data)
+        )
+
+        # Language detection — shebang line first
+        lang = "unknown"
+        first_line = code_text.split("\n")[0].lower()
+        if "python" in first_line:
+            lang = "python"
+        elif "node" in first_line or "javascript" in first_line:
+            lang = "javascript"
+        elif "bash" in first_line or "sh" in first_line:
+            lang = "bash"
+        else:
+            # keyword-based fallback — only on code, not user query
+            if "def " in code_text and "import " in code_text:
+                lang = "python"
+            elif "function " in code_text and ("const " in code_text or "let " in code_text):
+                lang = "javascript"
+            elif "public class " in code_text:
+                lang = "java"
+            elif "#include" in code_text:
+                lang = "cpp"
+        meta["language"] = lang
+        steps.append("language_detection_shebang")
+
+        # Syntax parse — Python only via ast
+        meta["valid_syntax"] = None
+        if lang == "python":
+            try:
+                import ast as _ast
+                _ast.parse(code_text)
+                meta["valid_syntax"] = True
+                steps.append("ast_parse_success")
+            except SyntaxError as e:
+                meta["valid_syntax"] = False
+                meta["syntax_error"] = str(e)
+                steps.append("ast_parse_failed")
+
+        # Structure metrics
+        lines = code_text.split("\n")
+        meta["line_count"]      = len(lines)
+        meta["function_count"]  = (
+            code_text.count("def ") + code_text.count("function ")
+        )
+        meta["class_count"]     = code_text.count("class ")
+        meta["import_count"]    = (
+            code_text.count("import ") + code_text.count("from ")
+        )
+        meta["complexity_score"] = (
+            code_text.count("if ")
+            + code_text.count("for ")
+            + code_text.count("while ")
+            + code_text.count("try ")
+        )
+        steps.append("structure_extraction")
+
+        canonical = (
+            f"CODE lang={lang} lines={meta['line_count']} "
+            f"functions={meta['function_count']} "
+            f"classes={meta['class_count']} "
+            f"complexity={meta['complexity_score']}"
+        )
+        if meta["valid_syntax"] is False:
+            canonical += f" SYNTAX_ERROR={meta.get('syntax_error','')}"
+
+        # Code text as context
+        canonical += f" | {code_text[:300]}"
+
+        ling = self._text_signals(canonical)
+
+        return NormalizedSignal(
+            modality           = "code",
+            canonical_text     = canonical,
+            raw_data           = raw_data,
+            language           = lang,
+            linguistic_signals = ling["signals"],
+            media_metadata     = meta,
+            processing_steps   = steps,
+        )
+
+    # ── DATA ──────────────────────────────────────────────────────────────
+
+    def _normalize_data(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
         """
         Blueprint: "structure extraction"
-        Industry: Real data processing with pandas and json
+        stdlib json + csv — no extra install
         """
-        
+        steps = []
+        meta  = {}
+
+        text = (
+            raw_data.decode("utf-8", errors="replace")
+            if isinstance(raw_data, bytes)
+            else str(raw_data)
+        )
+
+        # Try JSON
         try:
-            data_text = data_data.decode('utf-8') if isinstance(data_data, bytes) else str(data_data)
-            
-            processing_info = {'method': 'enhanced_metadata'}
-            metadata = {}
-            
-            # Try to parse as JSON
+            parsed = json.loads(text)
+            meta["format"]       = "json"
+            meta["keys"]         = list(parsed.keys()) if isinstance(parsed, dict) else []
+            meta["record_count"] = len(parsed) if isinstance(parsed, list) else 1
+            meta["nested"]       = any(
+                isinstance(v, (dict, list)) for v in parsed.values()
+            ) if isinstance(parsed, dict) else False
+            steps.append("json_parse")
+        except (json.JSONDecodeError, Exception):
+            # Try CSV
             try:
-                json_data = json.loads(data_text)
-                metadata['format'] = 'json'
-                metadata['keys'] = list(json_data.keys()) if isinstance(json_data, dict) else []
-                processing_info['json_parsing'] = True
-            except:
-                # Try to parse as CSV
-                try:
-                    csv_reader = csv.reader(data_text.split('\n'))
-                    rows = list(csv_reader)
-                    metadata['format'] = 'csv'
-                    metadata['columns'] = rows[0] if rows else []
-                    metadata['row_count'] = len(rows)
-                    processing_info['csv_parsing'] = True
-                except:
-                    metadata['format'] = 'plain_text'
-            
-            metadata.update({
-                'size_bytes': len(data_text.encode('utf-8')),
-                'row_count': metadata.get('row_count', 0),
-                'column_count': len(metadata.get('columns', [])),
-                'has_structure': metadata.get('format') in ['json', 'csv']
-            })
-            
-            return CleanedSignal(
-                modality_type='data',
-                cleaned_content=data_text,
-                metadata=metadata,
-                processing_info=processing_info,
-                tier_limits_applied=tier_limits,
-                success=True
-            )
-            
-        except Exception as e:
-            return CleanedSignal(
-                modality_type='data',
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=str(e)
-            )
+                import io as _io
+                reader = csv.reader(_io.StringIO(text))
+                rows   = list(reader)
+                meta["format"]        = "csv"
+                meta["columns"]       = rows[0] if rows else []
+                meta["column_count"]  = len(rows[0]) if rows else 0
+                meta["record_count"]  = max(0, len(rows) - 1)
+                steps.append("csv_parse")
+            except Exception:
+                meta["format"] = "plain_text"
+                steps.append("plain_text_fallback")
 
-class VoiceNormalizer:
-    """Voice processing normalizer"""
-    
-    def clean(self, voice_data: Any, tier_limits: Dict[str, Any]) -> CleanedSignal:
-        """Process voice data with tier-aware capabilities"""
-        
-        try:
-            processing_info = {'method': 'enhanced_metadata'}
-            
-            # Voice processing based on tier
-            if tier_limits.get('voice_limit_mb', 0) >= 50:  # Ultra and above
-                processing_info['voice_processing'] = True
-                processing_info['speaker_identification'] = True
-            
-            metadata = {
-                'size_bytes': len(voice_data) if isinstance(voice_data, bytes) else 1024,
-                'voice_enhanced': tier_limits.get('voice_limit_mb', 0) >= 50
-            }
-            
-            return CleanedSignal(
-                modality_type='voice',
-                cleaned_content=voice_data,
-                metadata=metadata,
-                processing_info=processing_info,
-                tier_limits_applied=tier_limits,
-                success=True
-            )
-            
-        except Exception as e:
-            return CleanedSignal(
-                modality_type='voice',
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=str(e)
-            )
+        meta["char_count"] = len(text)
+        canonical = (
+            f"DATA format={meta['format']} "
+            f"records={meta.get('record_count', 0)} "
+            f"keys={meta.get('keys', meta.get('columns', []))[:5]}"
+        )
+        canonical += f" | {text[:200]}"
 
-class BinaryNormalizer:
-    """Binary data processing normalizer"""
-    
-    def clean(self, binary_data: Any, tier_limits: Dict[str, Any]) -> CleanedSignal:
-        """Process binary data with tier-aware capabilities"""
-        
-        try:
-            processing_info = {'method': 'enhanced_metadata'}
-            
-            metadata = {
-                'size_bytes': len(binary_data) if isinstance(binary_data, bytes) else 2048,
-                'binary_type': self._detect_binary_type(binary_data)
-            }
-            
-            return CleanedSignal(
-                modality_type='binary',
-                cleaned_content=binary_data,
-                metadata=metadata,
-                processing_info=processing_info,
-                tier_limits_applied=tier_limits,
-                success=True
-            )
-            
-        except Exception as e:
-            return CleanedSignal(
-                modality_type='binary',
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=str(e)
-            )
-    
-    def _detect_binary_type(self, binary_data: bytes) -> str:
-        """Detect binary file type"""
-        if len(binary_data) < 4:
-            return 'unknown'
-        
-        # Check common file signatures
-        signatures = {
-            b'\x89PNG': 'png',
-            b'\xFF\xD8\xFF': 'jpeg',
-            b'GIF87a': 'gif',
-            b'GIF89a': 'gif',
-            b'%PDF': 'pdf',
-            b'PK\x03\x04': 'zip'
-        }
-        
-        for sig, file_type in signatures.items():
-            if binary_data.startswith(sig):
-                return file_type
-        
-        return 'unknown'
+        ling = self._text_signals(canonical)
 
-class MultimodalNormalizer:
-    """Multimodal processing normalizer"""
-    
-    def clean(self, multimodal_data: Any, tier_limits: Dict[str, Any]) -> CleanedSignal:
-        """Process multimodal data with tier-aware capabilities"""
-        
-        try:
-            processing_info = {'method': 'enhanced_metadata'}
-            
-            metadata = {
-                'size_bytes': len(multimodal_data) if isinstance(multimodal_data, bytes) else 8192,
-                'multimodal_type': 'complex',
-                'processing_level': 'premium' if tier_limits.get('max_files', -1) == -1 else 'standard'
-            }
-            
-            return CleanedSignal(
-                modality_type='multimodal',
-                cleaned_content=multimodal_data,
-                metadata=metadata,
-                processing_info=processing_info,
-                tier_limits_applied=tier_limits,
-                success=True
-            )
-            
-        except Exception as e:
-            return CleanedSignal(
-                modality_type='multimodal',
-                cleaned_content=None,
-                metadata={},
-                processing_info={},
-                tier_limits_applied=tier_limits,
-                success=False,
-                error_message=str(e)
-            )
+        return NormalizedSignal(
+            modality           = "data",
+            canonical_text     = canonical,
+            raw_data           = raw_data,
+            language           = ling["language"],
+            linguistic_signals = ling["signals"],
+            media_metadata     = meta,
+            processing_steps   = steps,
+        )
 
-# ════════════════════════════════════
-# PHASE 1.1 — INDUSTRY LEVEL SIGNAL TO TEXT CONVERTER
-# Blueprint: "Signal-to-Text Conversion for Media-Only Queries"
-# Industry: Production-ready media processing with tier-aware capabilities
-# ════════════════════════════════════
+    # ── BINARY ────────────────────────────────────────────────────────────
 
-class IndustryLevelSignalToTextConverter:
-    """
-    Phase 1.1 Industry-Level Signal-to-Text Converter
-    Blueprint: Convert media signals to text for normalization with real processing
-    Industry: Handle all media types with tier-aware processing capabilities
-    """
-    
-    def __init__(self):
-        self.supported_types = {
-            'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-            'audio/mpeg', 'audio/wav', 'audio/ogg',
-            'video/mp4', 'video/webm',
-            'application/pdf', 'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        }
-        
-        # Initialize industry-level cleaners
-        self.cleaners = IndustryLevelModalityCleaners()
-        self.industry_mode = True
-    
-    def convert_media_to_text(self, media_payloads: Dict[str, Any], user_tier: str = 'free') -> str:
+    def _normalize_binary(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
+        """Unknown binary — hash + size. No interpretation."""
+        steps = []
+        data  = raw_data if isinstance(raw_data, bytes) else str(raw_data).encode()
+
+        sha256    = hashlib.sha256(data).hexdigest()
+        size      = len(data)
+        canonical = f"BINARY size={size}bytes sha256={sha256[:16]}..."
+
+        return NormalizedSignal(
+            modality           = "binary",
+            canonical_text     = canonical,
+            raw_data           = raw_data,
+            language           = "unknown",
+            linguistic_signals = {},
+            media_metadata     = {"size_bytes": size, "sha256": sha256},
+            processing_steps   = ["hash_sha256"],
+        )
+
+    # ── MULTIMODAL ────────────────────────────────────────────────────────
+
+    def _normalize_multimodal(self, raw_data: Any, tier_limits: Dict) -> NormalizedSignal:
         """
-        Convert media payloads to text representation with industry-level processing
-        Blueprint: Process media with real capabilities, not just labels
-        Industry: Tier-aware processing with actual media analysis
+        Jarvis only — multiple modalities combined.
+        raw_data expected as dict: {"text": ..., "image": ..., "audio": ...}
         """
-        
-        if not media_payloads:
+        steps  = ["multimodal_detected"]
+        parts  = []
+        meta   = {}
+
+        if not isinstance(raw_data, dict):
+            return self._normalize_binary(raw_data, tier_limits)
+
+        for mod, data in raw_data.items():
+            if mod in ("text", "code", "data", "image", "audio", "video", "document"):
+                norm = self.normalize(data, mod, tier_limits)
+                if norm.success:
+                    parts.append(f"[{mod.upper()}] {norm.canonical_text[:200]}")
+                    meta[mod] = norm.media_metadata
+                    steps.append(f"sub_normalize_{mod}")
+
+        canonical = " | ".join(parts) if parts else "MULTIMODAL (empty)"
+        ling      = self._text_signals(canonical)
+
+        return NormalizedSignal(
+            modality           = "multimodal",
+            canonical_text     = canonical,
+            raw_data           = raw_data,
+            language           = ling["language"],
+            linguistic_signals = ling["signals"],
+            media_metadata     = meta,
+            processing_steps   = steps,
+        )
+
+    # ── Private helpers ───────────────────────────────────────────────────
+
+    def _text_signals(self, text: str) -> Dict[str, Any]:
+        """spaCy signals on any text — used by media normalizers too."""
+        if not text or not text.strip():
+            return {"language": "unknown", "signals": {}}
+        try:
+            lang = lang_detect(text[:300])
+        except Exception:
+            lang = "unknown"
+        doc     = _NLP(text[:1000])
+        signals = {
+            "entity_count": len(doc.ents),
+            "verb_count"  : sum(1 for t in doc if t.pos_ == "VERB"),
+            "noun_count"  : sum(1 for t in doc if t.pos_ == "NOUN"),
+            "has_entity"  : len(doc.ents) >= 1,
+            "has_verb"    : any(t.pos_ == "VERB" for t in doc),
+            "is_analytical": any(
+                t.dep_ in ("advcl", "ccomp", "expl") for t in doc
+            ),
+        }
+        return {"language": lang, "signals": signals}
+
+    def _librosa_missing_fallback(
+        self, modality: str, raw_data: Any, steps: List[str]
+    ) -> NormalizedSignal:
+        size = len(raw_data) if isinstance(raw_data, bytes) else 0
+        return NormalizedSignal(
+            modality           = modality,
+            canonical_text     = f"{modality.upper()} size={size}bytes (librosa not installed)",
+            raw_data           = raw_data,
+            language           = "unknown",
+            linguistic_signals = {},
+            media_metadata     = {"error": "librosa not installed", "size_bytes": size},
+            processing_steps   = steps + ["fallback_no_librosa"],
+            success            = False,
+            error              = "librosa not installed",
+        )
+
+    def _whisper_transcribe(self, audio_bytes: bytes) -> str:
+        """Whisper ASR — lazy load, multilingual, 99 languages."""
+        try:
+            import whisper as _whisper
+            import io as _io
+            import tempfile as _tmp
+            import os as _os
+
+            if Phase1_1_NormalizationEngine._whisper_model is None:
+                # tiny model — fast, multilingual, reasonable accuracy
+                Phase1_1_NormalizationEngine._whisper_model = _whisper.load_model("tiny")
+
+            with _tmp.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                f.write(audio_bytes)
+                tmp = f.name
+
+            result    = Phase1_1_NormalizationEngine._whisper_model.transcribe(tmp)
+            _os.unlink(tmp)
+            return result.get("text", "").strip()
+        except ImportError:
+            self.logger.warning("[Ph1.1] Whisper not installed — ASR skipped")
             return ""
-        
-        converted_parts = []
-        
-        for filename, file_info in media_payloads.items():
-            if isinstance(file_info, dict):
-                content = file_info.get('content', '')
-                content_type = file_info.get('content_type', '')
-                size = file_info.get('size', 0)
-                
-                # Convert based on media type with industry-level processing
-                text_representation = self._convert_with_industry_processing(
-                    content, content_type, filename, user_tier, size
-                )
-                
-                if text_representation:
-                    converted_parts.append(f"[{filename}: {text_representation}]")
-        
-        return " | ".join(converted_parts)
-    
-    def _convert_with_industry_processing(self, content: str, content_type: str, filename: str, user_tier: str, size: int) -> str:
-        """
-        Convert media using industry-level processing
-        Blueprint: Real media processing capabilities
-        """
-        
-        try:
-            # Determine modality type
-            modality_type = self._get_modality_type(content_type, filename)
-            
-            # Convert content to bytes if needed
-            if isinstance(content, str):
-                if content.startswith('data:'):
-                    # Handle base64 data URLs
-                    content = content.split(',')[1]
-                try:
-                    content_bytes = base64.b64decode(content)
-                except:
-                    content_bytes = content.encode('utf-8')
-            else:
-                content_bytes = content
-            
-            # Apply tier-aware processing
-            cleaned_signal = self.cleaners.normalize_modality(
-                content_bytes, modality_type, user_tier
-            )
-            
-            if cleaned_signal.success:
-                # Build rich text representation with processing metadata
-                metadata = cleaned_signal.metadata
-                processing_info = cleaned_signal.processing_info
-                
-                # Base representation
-                parts = [f"{modality_type.upper()}"]
-                
-                # Add tier-specific processing info
-                if processing_info.get('resized'):
-                    parts.append(f"RESIZED:{metadata.get('width', 0)}x{metadata.get('height', 0)}")
-                
-                if processing_info.get('format_converted'):
-                    parts.append(f"FORMAT:{metadata.get('format', 'unknown')}")
-                
-                if processing_info.get('noise_reduction'):
-                    parts.append("DENOISED")
-                
-                if processing_info.get('enhancement'):
-                    parts.append("ENHANCED")
-                
-                if processing_info.get('ocr_applied') and metadata.get('has_text'):
-                    parts.append(f"TEXT:{metadata.get('extracted_text_length', 0)}chars")
-                
-                if processing_info.get('speech_to_text'):
-                    parts.append("SPEECH2TEXT")
-                
-                if processing_info.get('keyframe_extraction'):
-                    parts.append(f"KEYFRAMES:{metadata.get('keyframe_count', 0)}")
-                
-                if processing_info.get('text_extraction'):
-                    parts.append(f"TEXT:{metadata.get('extracted_text_length', 0)}chars")
-                
-                if processing_info.get('syntax_parsing'):
-                    parts.append(f"SYNTAX:{'VALID' if metadata.get('valid_syntax', False) else 'INVALID'}")
-                
-                if processing_info.get('structure_parsing'):
-                    parts.append(f"STRUCTURE:{metadata.get('format', 'unknown')}")
-                
-                # Add size info
-                parts.append(f"SIZE:{metadata.get('size_bytes', 0)}bytes")
-                
-                return ":".join(parts)
-            else:
-                # Processing failed, return error info
-                return f"{modality_type.upper()}:ERROR-{cleaned_signal.error_message[:20]}"
-                
         except Exception as e:
-            logging.error(f"Industry processing failed for {filename}: {e}")
-            return self._convert_fallback(content, content_type, filename)
-    
-    def _convert_fallback(self, content: str, content_type: str, filename: str) -> str:
-        """
-        Fallback conversion for when industry processing is not available
-        Blueprint: Basic signal description, not content analysis
-        """
-        
-        # Detect media type
-        if content_type.startswith('image/'):
-            return f"IMAGE:{content_type.split('/')[-1].upper()}"
-        
-        elif content_type.startswith('audio/'):
-            return f"AUDIO:{content_type.split('/')[-1].upper()}"
-        
-        elif content_type.startswith('video/'):
-            return f"VIDEO:{content_type.split('/')[-1].upper()}"
-        
-        elif content_type == 'application/pdf':
-            return f"DOCUMENT:PDF"
-        
-        elif content_type in ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']:
-            return f"DOCUMENT:WORD"
-        
-        elif content_type == 'application/octet-stream':
-            # Try to detect from filename
-            if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                return "IMAGE:UNKNOWN"
-            elif filename.lower().endswith(('.mp3', '.wav', '.ogg')):
-                return "AUDIO:UNKNOWN"
-            elif filename.lower().endswith(('.mp4', '.webm')):
-                return "VIDEO:UNKNOWN"
-            elif filename.lower().endswith(('.pdf', '.doc', '.docx')):
-                return "DOCUMENT:UNKNOWN"
-            else:
-                return "BINARY:DATA"
-        
-        else:
-            return f"MEDIA:{content_type.split('/')[-1].upper()}"
-    
-    def _get_modality_type(self, content_type: str, filename: str) -> str:
-        """Get modality type from content type and filename"""
-        
-        if content_type.startswith('image/'):
-            return 'image'
-        elif content_type.startswith('audio/'):
-            return 'audio'
-        elif content_type.startswith('video/'):
-            return 'video'
-        elif content_type == 'application/pdf':
-            return 'document'
-        elif content_type in ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']:
-            return 'document'
-        elif content_type in ['text/x-python', 'text/javascript', 'text/java', 'text/cpp']:
-            return 'code'
-        elif content_type in ['text/csv', 'application/json']:
-            return 'data'
-        elif content_type == 'application/octet-stream':
-            # Try to detect from filename
-            if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                return 'image'
-            elif filename.lower().endswith(('.mp3', '.wav', '.ogg')):
-                return 'audio'
-            elif filename.lower().endswith(('.mp4', '.webm')):
-                return 'video'
-            elif filename.lower().endswith(('.pdf', '.doc', '.docx')):
-                return 'document'
-            elif filename.lower().endswith(('.py', '.js', '.java', '.cpp')):
-                return 'code'
-            elif filename.lower().endswith(('.csv', '.json')):
-                return 'data'
-            else:
-                return 'binary'
-        else:
-            return 'unknown'
-    
-    def is_supported_type(self, content_type: str) -> bool:
-        """Check if media type is supported"""
-        return content_type in self.supported_types
-    
-    def get_processing_capabilities(self, user_tier: str) -> Dict[str, Any]:
-        """Get processing capabilities for user tier"""
-        
-        # Return tier-specific capabilities
-        tier_capabilities = {
-            'free': ['basic_image_resize', 'basic_document_text'],
-            'paid': ['image_resize', 'image_denoise', 'document_text', 'code_syntax'],
-            'ultra_paid': ['image_resize', 'image_denoise', 'image_enhance', 'document_text', 'code_syntax', 'audio_basic'],
-            'business_small': ['image_resize', 'image_denoise', 'image_enhance', 'image_ocr', 'document_text', 'document_structure', 'code_syntax', 'audio_basic', 'video_keyframes'],
-            'enterprise': ['image_resize', 'image_denoise', 'image_enhance', 'image_ocr', 'document_text', 'document_structure', 'code_syntax', 'audio_enhanced', 'video_keyframes', 'video_audio_separation'],
-            'jarvis': ['all_capabilities']
-        }
-        
-        return {
-            'mode': 'industry',
-            'tier': user_tier,
-            'capabilities': tier_capabilities.get(user_tier, tier_capabilities['free'])
-        }
+            self.logger.warning(f"[Ph1.1] Whisper failed: {e}")
+            return ""
 
-# Factory Function
-def create_industry_level_signal_converter() -> IndustryLevelSignalToTextConverter:
-    """Create industry-level signal-to-text converter instance"""
-    return IndustryLevelSignalToTextConverter()
+
+# Module-level singleton
+_PHASE1_1 = Phase1_1_NormalizationEngine()
+
+# ════════════════════════════════════
+# PHASE 1.5 — Validation Layer (NEW)
+# Blueprint: Real enforcement of billing limits
+# Industry: Production-grade access control
+# ════════════════════════════════════
+
+
+
+
+@dataclass
+class ValidationResult:
+    """Validation result for enforcement"""
+    allowed: bool
+    violations: List[str]
+    filtered_data: Any
+    tier: str
+    limits_applied: Dict[str, Any]
+class Phase1_5ValidationLayer:
+    """
+    ENFORCEMENT LAYER - Critical Missing Piece
+    Connects Phase 1.0 capture with Billing limits
+    Blueprint: Real enforcement, not just config
+    """
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+    def validate_request(self, 
+                        signal_data: SignalData, 
+                        user_email: str,
+                        files: List[Dict[str, Any]] = None) -> ValidationResult:
+        """
+        Main validation function - ENFORCES billing limits
+        Blueprint: Real power control
+        """
+        # Step 1: Get user tier and limits
+        tier = BillingLayer.get_user_tier(user_email)
+        limits = BillingLayer.get_modality_limits(user_email)
+        violations = []
+        filtered_files = []
+        # Step 2: Validate modality access
+        modality_violations = self._validate_modalities(signal_data, limits)
+        violations.extend(modality_violations)
+        # Step 3: Validate files if present
+        if files:
+            file_violations, filtered_files = self._validate_files(files, limits)
+            violations.extend(file_violations)
+        # Step 4: Validate content size
+        size_violations = self._validate_content_size(signal_data, limits)
+        violations.extend(size_violations)
+        # Step 5: Final decision
+        allowed = len(violations) == 0
+        # Step 6: Filter data if needed
+        filtered_data = self._filter_signal_data(signal_data, filtered_files) if allowed else None
+        return ValidationResult(
+            allowed=allowed,
+            violations=violations,
+            filtered_data=filtered_data,
+            tier=tier,
+            limits_applied=limits
+        )
+    def _validate_modalities(self, signal_data: SignalData, limits: Dict[str, Any]) -> List[str]:
+        """Validate signal type against tier modalities"""
+        violations = []
+        signal_type = signal_data.signal_type.value
+        allowed_modalities = limits['modalities']
+        if signal_type not in allowed_modalities:
+            violations.append(f"Modality '{signal_type}' not allowed for tier. Allowed: {allowed_modalities}")
+        return violations
+    def _validate_files(self, files: List[Dict[str, Any]], limits: Dict[str, Any]) -> Tuple[List[str], List[Dict[str, Any]]]:
+        """Validate files against tier limits"""
+        violations = []
+        filtered_files = []
+        max_files = limits['max_files']
+        max_file_size = limits['max_file_size_mb'] * 1024 * 1024
+        max_total_size = limits['max_total_size_mb'] * 1024 * 1024
+        total_size = 0
+        for i, file_info in enumerate(files):
+            file_size = file_info.get('size', 0)
+            filename = file_info.get('filename', f'file_{i}')
+            # Check file count
+            if max_files != -1 and len(filtered_files) >= max_files:
+                violations.append(f"File limit exceeded: {max_files} files max")
+                break
+            
+            # Check file size
+            if file_size > max_file_size:
+                violations.append(f"File '{filename}' too large: {file_size/1024/1024:.1f}MB > {max_file_size/1024/1024:.1f}MB")
+                continue
+            
+            # Check total size
+            if total_size + file_size > max_total_size:
+                violations.append(f"Total size limit exceeded: {max_total_size/1024/1024:.1f}MB")
+                break
+            
+            filtered_files.append(file_info)
+            total_size += file_size
+        return violations, filtered_files
+    def _validate_content_size(self, signal_data: SignalData, limits: Dict[str, Any]) -> List[str]:
+        """Validate content size against limits"""
+        violations = []
+        # Check text length
+        if hasattr(signal_data, 'size_bytes') and signal_data.size_bytes:
+            max_text_tokens = limits.get('max_text_tokens', float('inf'))
+            if signal_data.size_bytes > max_text_tokens * 4:  # Rough estimate
+                violations.append(f"Content too large: {signal_data.size_bytes} bytes")
+        return violations    
+    
+    def _filter_signal_data(self, signal_data: SignalData, filtered_files: List[Dict[str, Any]]) -> SignalData:
+        """Filter signal data based on validation — propagates ALL explicit fields"""
+        return SignalData(
+            signal_type=signal_data.signal_type,
+            raw_data=signal_data.raw_data,
+            query_format=signal_data.query_format,
+            content_type=signal_data.content_type,
+            size_bytes=signal_data.size_bytes,
+            capture_id=signal_data.capture_id,
+            capture_timestamp=signal_data.capture_timestamp,
+            metadata={
+                **signal_data.metadata,
+                'filtered_files': filtered_files,
+                'validation_passed': True
+            },
+            tier_limits=signal_data.tier_limits,
+            validation_status=signal_data.validation_status,
+            validation_errors=signal_data.validation_errors,
+            files_meta=signal_data.files_meta,
+            # 🔴 EXPLICIT BACKWARD COMPATIBILITY FIELDS — MUST PROPAGATE
+            session_id=signal_data.session_id,
+            device_info=signal_data.device_info,
+            platform_info=signal_data.platform_info,
+            source_info=signal_data.source_info,
+            language_info=signal_data.language_info,
+            modality_info=signal_data.modality_info
+        )
+_VALIDATOR = Phase1_5ValidationLayer()
 
 #======================================================================================================
 #=========================================================================================================================================
@@ -3385,76 +3613,655 @@ if ENABLE_TRAINING:
 # =========================================
 
 
-# -------- Phase 3.0 : Question Classification --------
-class KnowledgeSourceClassifier:
-    def classify(self, layer1_bundle: dict) -> str:
+# ================================================================
+# LAYER 3 — PHASE 3.0: KNOWLEDGE SOURCE CLASSIFIER (UPGRADED)
+# Blueprint: "actual mein find karna hai ki kaun si query factual/conceptual"
+# 
+# Upgrades:
+#   1. Registry-based modality signal extraction (no hardcoding)
+#   2. Native multimodal signals (mel spectrogram, ViT patches, spatio-temporal)
+#   3. Unified embedding space → CrossModalRetrievalHint
+#   4. Vedic Symbolic Decoder (Jarvis only, config-gated)
+#   5. NLP billing window cap applied
+#
+# Output: dict (not str) — Phase 3.3 KnowledgeRouter unpacks it
+# ================================================================
+
+import logging
+from typing import Dict, Any, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────
+# UPGRADE 1: REGISTRY-BASED MODALITY SIGNAL EXTRACTOR
+# Blueprint: "Registry-driven, not if/else driven"
+# Each modality gets its own handler — Phase 1.1 ke real metadata use karta hai
+# ──────────────────────────────────────────────────────────────────
+
+class ModalitySignalRegistry:
+    """
+    Registry-based dispatch — no hardcoded if/else.
+    Naya modality add karna = sirf register() call karo.
+    Phase 1.1 ke actual media_metadata keys use karo — averaged scalars nahi.
+    """
+    _handlers: Dict[str, Any] = {}
+
+    @classmethod
+    def register(cls, modality: str):
+        """Decorator-based registration — clean, explicit"""
+        def decorator(fn):
+            cls._handlers[modality] = fn
+            return fn
+        return decorator
+
+    @classmethod
+    def extract(cls, modality: str, media_metadata: dict,
+                cognitive_profile: dict) -> dict:
         """
-        Language-agnostic classification.
-        No hardcoded strings — numeric depth + spaCy signals + Layer 1 sub_goals.
+        Dispatch to correct handler.
+        Unknown modality → _default handler (safe fallback).
+        """
+        handler = cls._handlers.get(
+            modality,
+            cls._handlers.get("_default", lambda m, p: {})
+        )
+        return handler(media_metadata, cognitive_profile)
+
+
+# ── AUDIO HANDLER: Log-Mel Spectrogram Signals ─────────────────────
+@ModalitySignalRegistry.register("audio")
+def _handle_audio(meta: dict, profile: dict) -> dict:
+    """
+    Native Multimodal: Log-Mel Spectrogram — not just energy.
+    Phase 1.1 ke real keys: mel_mean, mel_std, zcr_mean,
+    spectral_centroid_mean, tempo_bpm
+    
+    Vedic insight: Shloka/Mantra = low ZCR + specific mel pattern
+    Modern insight: Speech = high ZCR, Music = rhythmic tempo
+    """
+    mel_mean      = float(meta.get("mel_mean", -40.0))
+    mel_std       = float(meta.get("mel_std", 10.0))
+    zcr           = float(meta.get("zcr_mean", 0.1))
+    centroid_hz   = float(meta.get("spectral_centroid_mean", 2000.0))
+    tempo         = float(meta.get("tempo_bpm", 0.0))
+    rms           = float(meta.get("rms_before", 0.0))
+
+    # Acoustic complexity — mel_std / |mel_mean| — higher = more tonal variety
+    acoustic_complexity = mel_std / max(abs(mel_mean), 1.0)
+
+    # Spectral brightness — normalized to 0-1 (human speech peaks ~2-4kHz)
+    spectral_brightness = min(centroid_hz / 8000.0, 1.0)
+
+    # Rhythm density — normalized (fast tempo = high density)
+    rhythm_density = min(tempo / 200.0, 1.0)
+
+    # Is Vedic Chant / Mantra:
+    # Low ZCR (smooth, sustained) + mel_mean not too low (not silence)
+    # + low spectral centroid (bass-dominant, not speech)
+    is_chant = (
+        zcr < 0.08 and
+        mel_mean > -50.0 and
+        centroid_hz < 2000.0
+    )
+
+    # Is speech: moderate ZCR + high centroid (vocal tract resonance)
+    is_speech = zcr > 0.05 and centroid_hz > 1500.0
+
+    # Is music: high tempo OR rhythmic pattern
+    is_music = tempo > 60.0 and not is_chant
+
+    return {
+        "acoustic_complexity": round(acoustic_complexity, 4),
+        "spectral_brightness": round(spectral_brightness, 4),
+        "rhythm_density":      round(rhythm_density, 4),
+        "is_chant":            is_chant,      # Vedic mantra/shloka
+        "is_speech":           is_speech,     # Normal speech query
+        "is_music":            is_music,      # Musical content
+        "raw_energy":          round(rms, 4),
+    }
+
+
+# ── VOICE HANDLER: Live Voice Stream Signals ───────────────────────
+@ModalitySignalRegistry.register("voice")
+def _handle_voice(meta: dict, profile: dict) -> dict:
+    """
+    Voice = live WebRTC stream.
+    Phase 1.1 keys: mel_mean, pitch_mean_hz, rms
+    Real-time: urgency + pitch variation are key signals.
+    """
+    pitch_hz  = float(meta.get("pitch_mean_hz", 0.0))
+    mel_mean  = float(meta.get("mel_mean", -40.0))
+    rms       = float(meta.get("rms", 0.0))
+
+    # Pitch variation — higher pitch = question/urgency (normalized to 1.0 at 500Hz)
+    pitch_normalized = min(pitch_hz / 500.0, 1.0)
+
+    # Energy-based urgency
+    urgency = min(rms * 5.0, 1.0)
+
+    return {
+        "acoustic_complexity": abs(mel_mean) / 80.0,
+        "pitch_normalized":    round(pitch_normalized, 4),
+        "urgency":             round(urgency, 4),
+        "is_chant":            False,   # Voice stream = real-time, not chant
+        "is_speech":           True,    # Voice = speech by definition
+    }
+
+
+# ── IMAGE HANDLER: ViT-Style Grid Patch Signals ─────────────────────
+@ModalitySignalRegistry.register("image")
+def _handle_image(meta: dict, profile: dict) -> dict:
+    """
+    Native Multimodal: ViT-style patch reasoning proxy.
+    Phase 1.1 keys: std_rgb, mean_rgb, ocr_text, original_size
+    
+    Vedic insight: Stone temples = warm tone, low variance, high edge density
+    Grid patches: std per channel ≈ patch richness (how varied each visual region is)
+    """
+    std_rgb  = meta.get("std_rgb", [0.0, 0.0, 0.0])
+    mean_rgb = meta.get("mean_rgb", [128.0, 128.0, 128.0])
+    ocr_text = meta.get("ocr_text", "")
+    size     = meta.get("normalized_size", [512, 512])
+
+    # Color variance — proxy for visual complexity (ViT patch richness)
+    color_var = sum(std_rgb) / len(std_rgb) if std_rgb else 0.0
+
+    # Patch density estimate:
+    # High std_rgb = many distinct patch regions (complex scene)
+    # Low std_rgb = uniform texture (stone wall, manuscript background)
+    patch_density = min(color_var / 80.0, 1.0)
+
+    # Stone/ancient detection:
+    # Warm tone (R > B) + low variance (uniform stone texture)
+    r_channel = mean_rgb[0] if len(mean_rgb) > 0 else 128
+    b_channel = mean_rgb[2] if len(mean_rgb) > 2 else 128
+    r_dominance = (r_channel - b_channel) / 255.0
+
+    # Stone: warm (r_dominance > 0.05) + uniform (color_var < 35)
+    is_stone_texture = r_dominance > 0.05 and color_var < 35.0
+
+    # Ancient artifact proxy:
+    # Stone texture + no OCR (no modern text) OR Sanskrit OCR
+    has_ocr       = len(ocr_text.strip()) > 10
+    is_likely_ancient = is_stone_texture and (
+        not has_ocr or
+        any(ch > '\u0900' and ch < '\u097F' for ch in ocr_text)  # Devanagari
+    )
+
+    # High-detail image: large size + high patch density
+    image_resolution = (size[0] * size[1]) if size else 262144
+    is_high_detail    = image_resolution > 500000 and patch_density > 0.4
+
+    return {
+        "visual_complexity":   round(min(color_var / 100.0, 1.0), 4),
+        "patch_density":       round(patch_density, 4),
+        "is_likely_ancient":   is_likely_ancient,    # Temple, yantra, sculpture
+        "is_stone_texture":    is_stone_texture,     # Stone carving proxy
+        "has_text_regions":    has_ocr,              # OCR found text
+        "ocr_confidence":      min(len(ocr_text) / 200.0, 1.0),
+        "is_high_detail":      is_high_detail,       # High-res detailed image
+    }
+
+
+# ── VIDEO HANDLER: Spatio-Temporal Cube Signals ─────────────────────
+@ModalitySignalRegistry.register("video")
+def _handle_video(meta: dict, profile: dict) -> dict:
+    """
+    Native Multimodal: Spatio-temporal reasoning.
+    Phase 1.1 keys: fps, avg_motion, duration_sec, width, height, keyframes_extracted
+    
+    Vedic insight: Temple walk-through = low motion (static architecture)
+    Modern insight: High motion = dynamic scene, procedural content
+    """
+    fps        = float(meta.get("fps", 25.0))
+    avg_motion = float(meta.get("avg_motion", 10.0))
+    duration   = float(meta.get("duration_sec", 0.0))
+    width      = int(meta.get("width", 640))
+    height     = int(meta.get("height", 480))
+    keyframes  = meta.get("keyframes_extracted", [])
+
+    # Temporal complexity — high avg_motion = dynamic content (normalized to 1.0 at motion=50)
+    temporal_complexity = min(avg_motion / 50.0, 1.0)
+
+    # Spatial richness — high resolution + high fps = dense spatio-temporal cube
+    spatial_resolution  = (width * height) / (1920.0 * 1080.0)  # normalize to 1080p
+    spatial_richness    = min(spatial_resolution, 1.0)
+
+    # Duration factor — longer = more context to parse
+    duration_factor = min(duration / 60.0, 1.0)
+
+    # Architectural content: low motion + multiple keyframes (static structure)
+    is_architectural = avg_motion < 8.0 and len(keyframes) >= 3
+
+    # Documentary/lecture: moderate motion + long duration
+    is_instructional = avg_motion < 20.0 and duration > 30.0
+
+    return {
+        "temporal_complexity":  round(temporal_complexity, 4),
+        "spatial_richness":     round(spatial_richness, 4),
+        "duration_factor":      round(duration_factor, 4),
+        "is_architectural":     is_architectural,    # Temple, ancient structure
+        "is_instructional":     is_instructional,    # Lecture, demonstration
+    }
+
+
+# ── DOCUMENT HANDLER: Structural Signals ────────────────────────────
+@ModalitySignalRegistry.register("document")
+def _handle_document(meta: dict, profile: dict) -> dict:
+    """
+    Phase 1.1 keys: heading_count, has_tables, page_count, word_count
+    """
+    heading_count = int(meta.get("heading_count", 0))
+    has_tables    = bool(meta.get("has_tables", False))
+    page_count    = int(meta.get("page_count", 1))
+    word_count    = int(meta.get("word_count", 0))
+
+    # Manuscript: no headings + many pages (continuous Sanskrit text)
+    is_manuscript  = heading_count == 0 and page_count > 5
+
+    # Structured report: headings + tables
+    is_structured  = heading_count >= 3 and has_tables
+
+    # Structural complexity — normalized
+    structural_complexity = min(heading_count / 10.0, 1.0)
+
+    return {
+        "structural_complexity": round(structural_complexity, 4),
+        "has_tables":            has_tables,
+        "page_depth":            min(page_count / 100.0, 1.0),
+        "is_manuscript":         is_manuscript,    # Ancient text, scripture
+        "is_structured":         is_structured,    # Report, technical doc
+    }
+
+
+# ── DEFAULT HANDLER: Unknown modality safe fallback ─────────────────
+@ModalitySignalRegistry.register("_default")
+def _handle_default(meta: dict, profile: dict) -> dict:
+    return {
+        "acoustic_complexity":  0.0,
+        "visual_complexity":    0.0,
+        "temporal_complexity":  0.0,
+        "is_likely_ancient":    False,
+        "is_chant":             False,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────
+# UPGRADE 2: CROSS-MODAL RETRIEVAL HINT
+# Blueprint: "Text query → manuscript image fetch, temple photo → Agni Purana text"
+# Unified Embedding Space: query modality ≠ target modality → cross-modal
+# ──────────────────────────────────────────────────────────────────
+
+class CrossModalRetrievalHint:
+    """
+    Unified embedding space hint for Layer 3 retrieval.
+    Decides: kya dusri modality ka data bhi chahiye?
+    
+    Example:
+      Audio chant query → retrieve Sanskrit text from Vector DB
+      Temple image      → retrieve Agama Shastra text + similar images
+      Text query        → standard text retrieval
+    """
+    def compute(
+        self,
+        modality: str,
+        modality_signals: dict,
+        query_embedding: list,
+        cognitive_profile: dict
+    ) -> dict:
+        target_collections = ["text"]  # text hamesha — base
+
+        # Audio/Voice query → also search transcript collection
+        if modality in ("audio", "voice"):
+            target_collections.append("transcript")
+
+            # Vedic chant → Sanskrit scripture text bhi
+            if modality_signals.get("is_chant", False):
+                target_collections.append("scripture_text")
+
+        # Image query → OCR text + description text
+        if modality == "image":
+            if modality_signals.get("has_text_regions", False):
+                target_collections.append("ocr_text")
+            if modality_signals.get("is_likely_ancient", False):
+                # Temple/manuscript → link to Agama Shastra / Vastu text
+                target_collections.append("vedic_architecture_text")
+
+        # Video → keyframe descriptions + transcript
+        if modality == "video":
+            target_collections.append("video_description")
+            if modality_signals.get("is_architectural", False):
+                target_collections.append("vedic_architecture_text")
+
+        # Document → full text already primary, no extra needed
+        cross_modal_active = (
+            modality != "text" and
+            len(target_collections) > 1
+        )
+
+        return {
+            "cross_modal_active":     cross_modal_active,
+            "target_collections":     target_collections,
+            "primary_modality":       modality,
+            # Compact embedding hint for Qdrant multi-collection search
+            "embedding_hint":         query_embedding[:64] if query_embedding else [],
+        }
+
+
+# ──────────────────────────────────────────────────────────────────
+# UPGRADE 3: VEDIC SYMBOLIC DECODER (JARVIS ONLY)
+# Blueprint: "Jarvis only — temple carving → mathematical ratios,
+#             symbolic/scientific logic"
+# Config-gated: capability_level == "jarvis" only
+# ──────────────────────────────────────────────────────────────────
+
+class VedicSymbolicDecoder:
+    """
+    Public tiers: basic OCR/description (Phase 1.1 already does this).
+    Jarvis tier: Structural Reasoning → links visuals to Phase-6 trained Vedic blueprints.
+    
+    Examples:
+      Temple pillar image → detect golden ratio → link to Manasara
+      Yantra image        → detect geometric proportions → link to Tantra Shastra
+      Sanskrit manuscript → symbolic decode → link to Viman Shastra
+    
+    Brain ko tier pata nahi — config se milta hai.
+    """
+    # Vedic reference scripture mapping — which visual type → which scripture
+    _SCRIPTURE_MAP = {
+        "architectural": [
+            "Manasara", "Mayamata", "Vastu_Shastra",
+            "Agni_Purana", "Brihat_Samhita"
+        ],
+        "manuscript": [
+            "Viman_Shastra", "Samarangana_Sutradhar",
+            "Arthashastra", "Sushruta_Samhita"
+        ],
+        "yantra": [
+            "Tantra_Shastra", "Shri_Yantra_Geometry",
+            "Atharvaveda", "Devi_Bhagavata"
+        ],
+        "sculpture": [
+            "Shilpa_Shastra", "Vishvakarma_Vastu",
+            "Agni_Purana"
+        ],
+    }
+
+    def decode(self, modality: str, modality_signals: dict,
+               cognitive_profile: dict) -> dict:
+        """
+        Config-gated — brain does not check tier string.
+        capability_level == "jarvis" means full power config injected.
+        """
+        # Config signal — not tier string
+        capability_level = cognitive_profile.get("capability_level", "base")
+        allow_ancient    = cognitive_profile.get("allow_ancient_tech", False)
+
+        if capability_level != "jarvis" or not allow_ancient:
+            # Public tiers: no symbolic decoding
+            return {
+                "vedic_symbolic_active": False,
+                "mode": "basic_description"
+            }
+
+        # Only image/video can have symbolic visual content
+        if modality not in ("image", "video", "document"):
+            return {"vedic_symbolic_active": False, "mode": "non_visual"}
+
+        # Determine visual type from modality signals
+        visual_type = "unknown"
+
+        if modality == "image":
+            if modality_signals.get("is_likely_ancient"):
+                if modality_signals.get("has_text_regions"):
+                    visual_type = "manuscript"    # Text visible = manuscript
+                elif modality_signals.get("patch_density", 0) > 0.5:
+                    visual_type = "yantra"        # High detail = geometric yantra
+                else:
+                    visual_type = "architectural" # Low detail stone = temple structure
+
+        elif modality == "video":
+            if modality_signals.get("is_architectural"):
+                visual_type = "architectural"     # Temple walk-through
+
+        elif modality == "document":
+            if modality_signals.get("is_manuscript"):
+                visual_type = "manuscript"
+
+        # Unknown = basic mode
+        if visual_type == "unknown":
+            return {"vedic_symbolic_active": False, "mode": "unknown_visual"}
+
+        # Activate symbolic decoding
+        scriptures = self._SCRIPTURE_MAP.get(visual_type, [])
+
+        return {
+            "vedic_symbolic_active":  True,
+            "visual_type":            visual_type,
+            "mode":                   "symbolic_decode",
+            "cross_reference_scriptures": scriptures,
+            "extract_geometric_ratios":   visual_type in ("yantra", "architectural"),
+            "extract_scientific_logic":   True,
+            # Phase 6 trained blueprint linking — Jarvis memory graph hook
+            "link_phase6_blueprints":     True,
+        }
+
+
+# ──────────────────────────────────────────────────────────────────
+# PHASE 3.0: ENHANCED KnowledgeSourceClassifier
+# Blueprint: "actual mein find karna hai ki kaun si query factual/conceptual"
+# Native Multimodal + Registry + Unified Embedding + Vedic Decode
+# ──────────────────────────────────────────────────────────────────
+
+class KnowledgeSourceClassifier:
+    """
+    Phase 3.0 — INDUSTRY UPGRADED
+    
+    OLD: text-only, averaged scalars, string return
+    NEW: registry-based multimodal, rich signals, dict return with all context
+    
+    Output dict keys:
+      category          : "factual" / "conceptual" / "procedural" / "mixed" / "general"
+      cross_modal       : CrossModalRetrievalHint dict
+      vedic_decode      : VedicSymbolicDecoder dict
+      modality_signals  : Registry-extracted rich signals
+      nlp_window_used   : billing-gated window size
+    """
+
+    def __init__(self):
+        self._cross_modal = CrossModalRetrievalHint()
+        self._vedic_dec   = VedicSymbolicDecoder()
+
+    def classify(
+        self,
+        layer1_bundle: dict,
+        cognitive_profile: dict = None
+    ) -> dict:
+        """
+        Blueprint: "actual mein find karna hai"
+        No English keyword match on user query.
+        Pure computed signals: spaCy dep_/pos_, numeric multimodal, embedding scores.
         """
         DEPTH_INDEX = {
             "shallow": 0, "normal": 1, "moderate": 2,
             "deep": 3, "very_deep": 4, "ultra_deep": 5
         }
 
-        required_depth   = layer1_bundle.get("required_depth", "normal")
-        depth_idx        = DEPTH_INDEX.get(required_depth, 1)
-        normalized_query = layer1_bundle.get("normalized_query", "")
-        sub_goals        = layer1_bundle.get("sub_goals", [])   # Layer 1 output — complexity signal
+        profile = cognitive_profile or {}
 
-        # Layer 1 Phase 1.2 signals — real power
+        # ── STEP A: BILLING NLP WINDOW ────────────────────────────────
+        # Blueprint: max_nlp_power from billing controls NLP depth
+        nlp_power  = profile.get("max_nlp_power", 5)
+        nlp_window = nlp_power * 20  # free=100 tokens, jarvis=2000 tokens
+
+        # ── STEP B: LAYER 1 NUMERIC SIGNALS ──────────────────────────
+        required_depth     = layer1_bundle.get("required_depth", "normal")
+        depth_idx          = DEPTH_INDEX.get(required_depth, 1)
+        normalized_query   = layer1_bundle.get("normalized_query", "")
+        sub_goals          = layer1_bundle.get("sub_goals", [])
         is_analytical      = layer1_bundle.get("is_analytical", False)
         has_verb           = layer1_bundle.get("has_verb", False)
         has_entity         = layer1_bundle.get("has_entity", False)
         graph_intent_score = layer1_bundle.get("graph_intent_score", 0.0)
+        domains            = layer1_bundle.get("domains", [])
+        query_embedding    = layer1_bundle.get("query_embedding", [])
+        active_modalities  = layer1_bundle.get("active_modalities", 1)
+        thinking_styles    = layer1_bundle.get("thinking_styles_count", 0)
 
-        # spaCy — language-agnostic
-        doc          = _NLP(normalized_query)
+        # ── STEP C: MULTIMODAL METADATA (from Phase 1.1) ─────────────
+        media_metadata = layer1_bundle.get("layer1_media_metadata", {})
+        modality       = layer1_bundle.get("layer1_modality", "text")
+
+        # ── STEP D: REGISTRY DISPATCH — Native Multimodal Perception ──
+        # No if/else — registry handles dispatch
+        modality_signals = ModalitySignalRegistry.extract(
+            modality, media_metadata, profile
+        )
+
+        # ── STEP E: BILLING-GATED NLP ────────────────────────────────
+        doc          = _NLP(normalized_query[:nlp_window])
         entity_count = len(doc.ents)
         verb_count   = sum(1 for t in doc if t.pos_ == "VERB")
         noun_count   = sum(1 for t in doc if t.pos_ == "NOUN")
 
-        # sub_goals count → complexity signal from Layer 1
-        domains    = layer1_bundle.get("domains", [])
-        is_complex = len(sub_goals) >= 3 or len(domains) >= 2   # zyada goals = mixed/complex query
+        # Complexity — numeric, Layer 1 computed
+        is_complex = len(sub_goals) >= 3 or len(domains) >= 2
 
+        # ── STEP F: CROSS-MODAL RETRIEVAL HINT ───────────────────────
+        cross_modal = self._cross_modal.compute(
+            modality, modality_signals, query_embedding, profile
+        )
 
-        # REAL POWER: depth deep → conceptual
+        # ── STEP G: VEDIC SYMBOLIC DECODE (Jarvis only) ──────────────
+        vedic_decode = self._vedic_dec.decode(
+            modality, modality_signals, profile
+        )
+
+        # ── STEP H: CLASSIFICATION — Pure Computed Signals ───────────
+        # Priority waterfall — no English keywords on user query
+        # All decisions: numeric depth, spaCy dep_, embedding scores,
+        # registry modality signals
+
+        category = self._classify_category(
+            depth_idx=depth_idx,
+            is_analytical=is_analytical,
+            has_verb=has_verb,
+            has_entity=has_entity,
+            graph_intent_score=graph_intent_score,
+            entity_count=entity_count,
+            verb_count=verb_count,
+            noun_count=noun_count,
+            active_modalities=active_modalities,
+            thinking_styles=thinking_styles,
+            is_complex=is_complex,
+            modality=modality,
+            modality_signals=modality_signals,
+        )
+
+        result = {
+            "category":          category,
+            "cross_modal":       cross_modal,
+            "vedic_decode":      vedic_decode,
+            "modality_signals":  modality_signals,
+            "modality":          modality,
+            "nlp_window_used":   nlp_window,
+            # Pass-through for Phase 3.1+ downstream
+            "is_analytical":     is_analytical,
+            "graph_intent_score": graph_intent_score,
+            "depth_idx":         depth_idx,
+        }
+
+        logger.info(
+            f"[Ph3.0] category={category} | modality={modality} | "
+            f"cross_modal={cross_modal['cross_modal_active']} | "
+            f"vedic={vedic_decode['vedic_symbolic_active']} | "
+            f"nlp_window={nlp_window} | "
+            f"signals_keys={list(modality_signals.keys())}"
+        )
+
+        return result
+
+    def _classify_category(
+        self, *, depth_idx, is_analytical, has_verb, has_entity,
+        graph_intent_score, entity_count, verb_count, noun_count,
+        active_modalities, thinking_styles, is_complex,
+        modality, modality_signals
+    ) -> str:
+        """
+        Pure classification logic — extracted for testability.
+        Priority waterfall: each signal clearly ordered.
+        """
+
+        # P1: Multiple modalities = cross-modal = mixed (needs both sources)
+        if active_modalities > 1:
+            return "mixed"
+
+        # P2: Deep query = conceptual (meaning + relations needed)
         if depth_idx >= 3:
             return "conceptual"
 
-        # REAL POWER: is_analytical → causal structure = deep meaning chahiye
+        # P3: Analytical structure (causal dep_) = conceptual
         if is_analytical:
             return "conceptual"
 
-        # REAL POWER: Memory Graph strongly activated → conceptual
+        # P4: Memory Graph strongly activated = conceptual
         if graph_intent_score > 0.6:
             return "conceptual"
 
-        # Shallow depth
-        if depth_idx <= 1:
-            # REAL POWER: entity present + not analytical → factual
-            if has_entity or entity_count >= 2:
+        # P5: AUDIO — Vedic chant/mantra = conceptual
+        # Native multimodal: mel pattern + ZCR signal (not just energy)
+        if modality in ("audio", "voice"):
+            if modality_signals.get("is_chant", False):
+                return "conceptual"   # Vedic mantra = deep meaning, not factual lookup
+            # Normal speech (not chant, not analytical) = factual direction
+            if modality_signals.get("is_speech", True) and not is_analytical:
                 return "factual"
-            return "general"
 
-        # Moderate depth
+        # P6: IMAGE — ancient temple/manuscript = mixed
+        # ViT patch signals: stone texture + ancient detection
+        if modality == "image":
+            if modality_signals.get("is_likely_ancient", False):
+                return "mixed"   # Structure (factual) + meaning (conceptual)
+            if modality_signals.get("visual_complexity", 0) > 0.6 and has_entity:
+                return "mixed"
+
+        # P7: VIDEO — architectural walk-through = mixed
+        # Spatio-temporal: low motion = static structure
+        if modality == "video":
+            if modality_signals.get("is_architectural", False):
+                return "mixed"
+
+        # P8: DOCUMENT — ancient manuscript = conceptual
+        if modality == "document":
+            if modality_signals.get("is_manuscript", False):
+                return "conceptual"  # Scripture = deep meaning
+
+        # P9: Multiple thinking styles = mixed
+        if thinking_styles >= 3:
+            return "mixed"
+
+        # P10: Shallow + entity present = factual
+        if depth_idx == 0:
+            return "factual" if (has_entity or entity_count >= 2) else "general"
+
+        # P11: Complex (many sub-goals or domains) = mixed
         if is_complex:
             return "mixed"
 
-        # REAL POWER: verb heavy + no entity → procedural
+        # P12: Verb-heavy + no entity = procedural (process query)
         if has_verb and not has_entity and verb_count > noun_count:
             return "procedural"
 
-        # REAL POWER: entity present → factual
+        # P13: Entity present = factual (specific reference)
         if has_entity or entity_count >= 2:
             return "factual"
 
+        # P14: Nouns present = conceptual (abstract topic)
         if noun_count > 0:
             return "conceptual"
 
         return "general"
-
 # -------- Phase 3.1 : Source Priority Resolution --------
 class SourcePriorityResolver:
     def resolve(self, category: str) -> dict:
@@ -3625,7 +4432,7 @@ class KnowledgeRouter:
         profile = cognitive_profile or {}
 
         # Phase 3.0 — classify (language-agnostic, Layer 1 bundle se)
-        category = classifier.classify(bundle)
+        category = classifier.classify(bundle, profile)
 
         # Phase 3.1 — source priority
         routing = resolver.resolve(category)
@@ -3650,6 +4457,7 @@ class KnowledgeRouter:
             routing["reasoning"] = True
         if profile.get("use_emergent_concepts"):
             routing["memory"] = True
+
 
         # Layer 1 Phase 1.2 signals — real power
         is_analytical      = bundle.get("is_analytical", False)
@@ -3756,226 +4564,11 @@ class IntentDecompositionEngine:
             files=kwargs.get("files")
         )
         
-        # ════════════════════════════════════
-        # PHASE 1.5 — Validation Layer (NEW)
-        # Blueprint: Real enforcement of billing limits
-        # Industry: Production-grade access control
-        # ════════════════════════════════════
-
-        # Add root to path
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-        # Set environment for billing
-        os.environ['DATABASE_URL'] = 'test://localhost'
-
-        @dataclass
-        class ValidationResult:
-            """Validation result for enforcement"""
-            allowed: bool
-            violations: List[str]
-            filtered_data: Any
-            tier: str
-            limits_applied: Dict[str, Any]
-
-        class Phase1_5ValidationLayer:
-            """
-            ENFORCEMENT LAYER - Critical Missing Piece
-            Connects Phase 1.0 capture with Billing limits
-            Blueprint: Real enforcement, not just config
-            """
-
-            def __init__(self):
-                self.logger = logging.getLogger(__name__)
-
-            def validate_request(self, 
-                                signal_data: SignalData, 
-                                user_email: str,
-                                files: List[Dict[str, Any]] = None) -> ValidationResult:
-                """
-                Main validation function - ENFORCES billing limits
-                Blueprint: Real power control
-                """
-                # Step 1: Get user tier and limits
-                tier = BillingLayer.get_user_tier(user_email)
-                limits = BillingLayer.get_modality_limits(user_email)
-
-                violations = []
-                filtered_files = []
-
-                # Step 2: Validate modality access
-                modality_violations = self._validate_modalities(signal_data, limits)
-                violations.extend(modality_violations)
-
-                # Step 3: Validate files if present
-                if files:
-                    file_violations, filtered_files = self._validate_files(files, limits)
-                    violations.extend(file_violations)
-
-                # Step 4: Validate content size
-                size_violations = self._validate_content_size(signal_data, limits)
-                violations.extend(size_violations)
-
-                # Step 5: Final decision
-                allowed = len(violations) == 0
-
-                # Step 6: Filter data if needed
-                filtered_data = self._filter_signal_data(signal_data, filtered_files) if allowed else None
-
-                return ValidationResult(
-                    allowed=allowed,
-                    violations=violations,
-                    filtered_data=filtered_data,
-                    tier=tier,
-                    limits_applied=limits
-                )
-
-            def _validate_modalities(self, signal_data: SignalData, limits: Dict[str, Any]) -> List[str]:
-                """Validate signal type against tier modalities"""
-                violations = []
-
-                signal_type = signal_data.signal_type.value
-                allowed_modalities = limits['modalities']
-
-                if signal_type not in allowed_modalities:
-                    violations.append(f"Modality '{signal_type}' not allowed for tier. Allowed: {allowed_modalities}")
-
-                return violations
-
-            def _validate_files(self, files: List[Dict[str, Any]], limits: Dict[str, Any]) -> Tuple[List[str], List[Dict[str, Any]]]:
-                """Validate files against tier limits"""
-                violations = []
-                filtered_files = []
-
-                max_files = limits['max_files']
-                max_file_size = limits['max_file_size_mb'] * 1024 * 1024
-                max_total_size = limits['max_total_size_mb'] * 1024 * 1024
-
-                total_size = 0
-
-                for i, file_info in enumerate(files):
-                    file_size = file_info.get('size', 0)
-                    filename = file_info.get('filename', f'file_{i}')
-
-                    # Check file count
-                    if max_files != -1 and len(filtered_files) >= max_files:
-                        violations.append(f"File limit exceeded: {max_files} files max")
-                        break
-                    
-                    # Check file size
-                    if file_size > max_file_size:
-                        violations.append(f"File '{filename}' too large: {file_size/1024/1024:.1f}MB > {max_file_size/1024/1024:.1f}MB")
-                        continue
-                    
-                    # Check total size
-                    if total_size + file_size > max_total_size:
-                        violations.append(f"Total size limit exceeded: {max_total_size/1024/1024:.1f}MB")
-                        break
-                    
-                    filtered_files.append(file_info)
-                    total_size += file_size
-
-                return violations, filtered_files
-
-            def _validate_content_size(self, signal_data: SignalData, limits: Dict[str, Any]) -> List[str]:
-                """Validate content size against limits"""
-                violations = []
-
-                # Check text length
-                if hasattr(signal_data, 'size_bytes') and signal_data.size_bytes:
-                    max_text_tokens = limits.get('max_text_tokens', float('inf'))
-                    if signal_data.size_bytes > max_text_tokens * 4:  # Rough estimate
-                        violations.append(f"Content too large: {signal_data.size_bytes} bytes")
-
-                return violations
-
-            # def _filter_signal_data(self, signal_data: SignalData, filtered_files: List[Dict[str, Any]]) -> SignalData:
-            #     """Filter signal data based on validation"""
-            #     # Create new signal data with filtered files
-            #     filtered_signal_data = SignalData(
-            #         signal_type=signal_data.signal_type,
-            #         raw_data=signal_data.raw_data,
-            #         query_format=signal_data.query_format,
-            #         content_type=signal_data.content_type,
-            #         size_bytes=signal_data.size_bytes,
-            #         capture_id=signal_data.capture_id,
-            #         capture_timestamp=signal_data.capture_timestamp,
-            #         metadata={
-            #             **signal_data.metadata,
-            #             'filtered_files': filtered_files,
-            #             'validation_passed': True
-            #         }
-            #     )
-            #     return filtered_signal_data
-
-            def _filter_signal_data(self, signal_data: SignalData, filtered_files: List[Dict[str, Any]]) -> SignalData:
-                """Filter signal data based on validation — propagates ALL explicit fields"""
-                return SignalData(
-                    signal_type=signal_data.signal_type,
-                    raw_data=signal_data.raw_data,
-                    query_format=signal_data.query_format,
-                    content_type=signal_data.content_type,
-                    size_bytes=signal_data.size_bytes,
-                    capture_id=signal_data.capture_id,
-                    capture_timestamp=signal_data.capture_timestamp,
-                    metadata={
-                        **signal_data.metadata,
-                        'filtered_files': filtered_files,
-                        'validation_passed': True
-                    },
-                    tier_limits=signal_data.tier_limits,
-                    validation_status=signal_data.validation_status,
-                    validation_errors=signal_data.validation_errors,
-                    files_meta=signal_data.files_meta,
-                    # 🔴 EXPLICIT BACKWARD COMPATIBILITY FIELDS — MUST PROPAGATE
-                    session_id=signal_data.session_id,
-                    device_info=signal_data.device_info,
-                    platform_info=signal_data.platform_info,
-                    source_info=signal_data.source_info,
-                    language_info=signal_data.language_info,
-                    modality_info=signal_data.modality_info
-                )
-
-        # Factory function
-        def create_validation_layer() -> Phase1_5ValidationLayer:
-            """Create validation layer instance"""
-            return Phase1_5ValidationLayer()
-
-        # Test function
-        def test_validation_layer():
-            """Test validation layer functionality"""
-            validator = create_validation_layer()
-
-            # Test 1: Free tier with image
-            from phase1_0_signal_capture_engine import create_signal_capture_engine
-            engine = create_signal_capture_engine()
-
-            signal_data = engine.capture_query('test', content_type='image/jpeg')
-            result = validator.validate_request(signal_data, 'user@example.com')  # Free tier
-
-            print("Test 1 - Free tier with image:")
-            print(f"  Allowed: {result.allowed}")
-            print(f"  Violations: {result.violations}")
-            print(f"  Tier: {result.tier}")
-
-            # Test 2: Jarvis tier with image
-            result = validator.validate_request(signal_data, 'chirag@example.com')  # Jarvis tier
-
-            print("\nTest 2 - Jarvis tier with image:")
-            print(f"  Allowed: {result.allowed}")
-            print(f"  Violations: {result.violations}")
-            print(f"  Tier: {result.tier}")
-
-        if __name__ == "__main__":
-            test_validation_layer()
-
-        #-------------------------------------------
         
-        from phase1_5_validation_layer import create_validation_layer
-        validator = create_validation_layer()
         
         # Validate request against billing limits
         user_email = kwargs.get('user_email', 'anonymous@example.com')
-        validation_result = validator.validate_request(
+        validation_result =_VALIDATOR.validate_request(
             signal_data=signal_data,
             user_email=user_email,
             files=kwargs.get('files')
@@ -4010,212 +4603,207 @@ class IntentDecompositionEngine:
         signal_type = validated_signal_data.signal_type.value
         query_format = validated_signal_data.query_format.value
         
-        # ════════════════════════════════════
-        # PHASE 1.1 — LINGUISTIC & MULTIMODAL NORMALIZATION
-        # Blueprint: "User ki language broken ho sakti hai, emotional ho sakti
-        #             hai, shorthand ho sakti hai. normalize, noise hatao,
-        #             grammar perfect karne ki koshish karo"
-        #
-        # Tier separation nahi — Brain: No subscription awareness.
-        # Brain = Code. LLM = Organ (Grammar fix LLM se nahi, Embedder se)
-        # ════════════════════════════════════
+        # ════════════════════════════════════════════════════════════════
+        # PHASE 1.1 — MULTIMODAL NORMALIZATION
+        # Blueprint: "Har modality ko processable canonical form mein
+        #             convert karna, bina intent distort kiye"
+        # ════════════════════════════════════════════════════════════════
 
-        # ── ROUTING GUARD (CRASH PREVENTION) ─────────────────────────────────
-        text_to_process = ""
-        media_payloads = {}
-        state["layer1_is_media_only"] = False
+        norm_result = _PHASE1_1.normalize(
+            raw_data     = raw_data,
+            signal_type  = signal_type,
+            tier_limits  = validated_signal_data.tier_limits,
+            content_type = validated_signal_data.content_type,
+        )
 
-        if signal_type in ["image", "audio", "video", "document", "multimodal"]:
-            # Branch A: Media / Binary Processing
-            state["layer1_is_media_only"] = True
-            logging.info(f"[Layer1 Ph1.1] MEDIA query ({signal_type}) — routing to industry converters")
-            
-            # Pack payload for the converter safely (raw bytes / structures supported)
-            media_payloads["data"] = raw_data
-            media_payloads["type"] = signal_type
-            
-            # REAL CAPABILITY: Industry-Level Signal-to-Text Conversion
-            try:
-                # 100% Industry Parity: Full Media Parsing Engine activated!
-                signal_converter = create_industry_level_signal_converter()
-                
-                # Formatting exact dictionary required by existing IndustryLevelSignalToTextConverter
-                media_dict = {
-                    "capture_payload": {
-                        "content": raw_data,
-                        "content_type": validated_signal_data.content_type,
-                        "size": getattr(validated_signal_data, 'size_bytes', 0)
-                    }
-                }
-                
-                # Real Processing runs here (ASR/OCR/Keyframes depending on Modality)
-                converted_text = signal_converter.convert_media_to_text(media_dict, user_tier=validation_result.tier)
-                text_to_process = converted_text
-            except Exception as e:
-                logging.error(f"[Layer1 Ph1.1] Media conversion failed: {e}")
-                text_to_process = ""
+        if not norm_result.success:
+            logging.warning(
+                f"[Layer1 Ph1.1] Normalization partial for {signal_type}: "
+                f"{norm_result.error}"
+            )
 
-        elif signal_type in ["text", "code", "json_api"] or isinstance(raw_data, str):
-            # Branch B: Text Processing String Parsing Safe Zone
-            text_to_process = str(raw_data) if raw_data else ""
-        else:
-            # Fallback for unknown binary
-            text_to_process = ""
+        # Phase 1.1 output → downstream variables
+        normalized_query = norm_result.canonical_text
+        detected_lang    = norm_result.language
 
-        # Store Phase 1.0 results safely for downstream logic
-        state["layer1_raw_query"] = raw_data
-        state["layer1_media_payloads"] = media_payloads
-        state["layer1_signal_type"] = signal_type
-        state["layer1_query_format"] = query_format
-        state["layer1_capture_id"] = validated_signal_data.capture_id
-        state["layer1_modality"] = signal_type  
-        
-        logging.info(f"[Layer1 Ph1.0] {query_format} → {signal_type} | "
-                    f"Payload size: {validated_signal_data.size_bytes} chars/bytes")
+        # spaCy + embedding — Phase 1.2 ke liye
+        nlp_window = config.get("max_nlp_power", 5) * 20
+        doc = _NLP(normalized_query[:nlp_window]) if normalized_query.strip() else _NLP("")
+        query_emb = _EMBEDDER.encode(normalized_query) if normalized_query.strip() \
+                    else _EMBEDDER.encode("")
 
-        # ── Step 1 & 2: Noise Removal & Language Detection ────────────────────
-        if text_to_process.strip():
-            # ftfy — Unicode corruption, broken encoding, mojibake sab fix karta hai
-            cleaned = ftfy.fix_text(text_to_process)
-            cleaned = re.sub(r'\s+', ' ', cleaned.strip())
-
-            try:
-                detected_lang = lang_detect(cleaned)
-            except Exception:
-                detected_lang = "en"
-
-            normalized_query = cleaned
-        else:
-            logging.warning("[Layer1 Ph1.1] EMPTY/UNPROCESSABLE query received — signals will be zero")
-            normalized_query = ""
-            detected_lang = "unknown"
-
-        # ── Step 3 & 4: Deterministic Normalization & NLP Parsing ─────────────
-        # LLM hallucinate karke user ka intent badal sakta tha isliye embedder use hota hai
-        doc = _NLP(normalized_query)
-        query_emb = _EMBEDDER.encode(normalized_query)
-
-        # ── Step 5: Linguistic signals (No Billing Limits Here) ───────────────
-        entities = [(ent.text, ent.label_) for ent in doc.ents]
+        # Linguistic signals — Phase 1.2 directly yeh use karega
+        entities = list(norm_result.linguistic_signals.get("entities", []))
         try:
-            noun_chunks = [chunk.text for chunk in doc.noun_chunks]
+            noun_chunks = [c.text for c in doc.noun_chunks]
         except Exception:
             noun_chunks = []
-            
+
+        # State mein store — sab downstream phases yahan se padhe
+        state["layer1_raw_query"]        = raw_data
+        state["layer1_signal_type"]      = signal_type
+        state["layer1_query_format"]     = query_format
+        state["layer1_capture_id"]       = validated_signal_data.capture_id
+        state["layer1_modality"]         = signal_type
+        state["layer1_media_metadata"]   = norm_result.media_metadata
+        state["layer1_norm_steps"]       = norm_result.processing_steps
+        state["layer1_is_media_only"]    = signal_type not in ("text", "code", "data")
+        state["layer1_norm_success"]     = norm_result.success
+        state["layer1_entities"]         = entities
+        state["layer1_noun_chunks"]      = noun_chunks
+
         logging.info(
-                f"[Layer1 Ph1.1] query='{normalized_query[:60]}' | "
-                f"lang={detected_lang} | "
-                f"entities={len(entities)} | nouns={len(noun_chunks)}"
+            f"[Layer1 Ph1.1] modality={signal_type} | "
+            f"lang={detected_lang} | "
+            f"steps={norm_result.processing_steps} | "
+            f"entities={len(entities)} | "
+            f"canonical_len={len(normalized_query)}"
         )
-        
-
-        # ════════════════════════════════════
+        # media_metadata from norm_result — downstream Phase 1.2 ke liye
+        media_payloads = norm_result.media_metadata
+        # ════════════════════════════════════════════════════════════════
         # PHASE 1.2 — INTENT TYPE DETECTION (MULTIMODAL THINKING TYPE)
-        # Blueprint: "ye routing nahi hai, thinking style hai"
-        # Blueprint: "Bina Memory Graph ke Intent sirf text hoga, Meaning nahi"
-        # Real computed signals — koi string labels nahi
-        # ════════════════════════════════════
+        # Blueprint: "ChatGPT pehle ye decide karta hai — Factual? Conceptual?
+        #             Ethical? Philosophical? Procedural? Mixed?
+        #             ye routing nahi hai, thinking style hai."
+        # Blueprint: "Ab intent sirf text se nahi, cross-modal signals se"
+        # All signals: spaCy dep_/pos_ (language-agnostic) + numeric Media metadata
+        # Zero English keyword match on user query
+        # ════════════════════════════════════════════════════════════════
 
-        # ── spaCy structural signals — language agnostic ──────────────────
-        # dep_ aur pos_ universal hain — French, Hindi, Arabic sab mein same
-        is_analytical = any(t.dep_ in ("advcl", "ccomp", "expl") for t in doc)
-        has_verb      = any(t.pos_ == "VERB" for t in doc)
-        has_entity    = len(entities) >= 1
+        # ── spaCy structural signals — language agnostic ──────────────
+        verb_count   = sum(1 for t in doc if t.pos_ == "VERB")
+        noun_count   = sum(1 for t in doc if t.pos_ == "NOUN")
+        entity_count = len(entities)
 
-        # Phase 1.2 (Thinking-Type signals)
-        # Blueprint: Phase 1.2 intent type detection is thinking-style, not answer routing.
-        # Blueprint: "ChatGpt phle ye decide krta hai :- (i) Factual ? (ii) Conceptual ? (iii) ethical ? (iv) philosophical ? (v) Procedual? (vi) mixed?"
-        # Blueprint: "ye routing nhi hai ,thinking style hai ."
-        # These are structural booleans/counts derived from spaCy universal tags (language-agnostic).
-        verb_count     = sum(1 for t in doc if t.pos_ == "VERB")
-        entity_count   = len(entities)
-        noun_count     = len(noun_chunks)
+        is_analytical        = any(t.dep_ in ("advcl", "ccomp", "expl") for t in doc)
+        has_verb             = verb_count >= 1
+        has_entity           = entity_count >= 1
+        has_causal_structure = any(t.dep_ in ("advcl", "mark", "csubj", "relcl") for t in doc)
+        has_process_structure = verb_count >= 2 and entity_count == 0
+        has_factual_structure = entity_count >= 1 and noun_count >= 1
+        has_abstract_nouns   = sum(1 for t in doc if t.pos_ == "NOUN" and len(t.text) > 6) >= 1
+        has_imperative       = any(t.pos_ == "VERB" and t.dep_ == "ROOT" for t in doc)
+        has_question_struct  = any(t.pos_ == "PRON" for t in doc)
+        has_nested_clause    = any(t.dep_ in ("ccomp", "xcomp") for t in doc)
+        has_value_judgment   = any(
+            t.dep_ in ("advmod", "neg") and t.pos_ == "ADJ" for t in doc
+        )
 
-        has_causal_structure   = any(t.dep_ in ["advcl", "mark", "csubj", "relcl"] for t in doc)
-        has_process_structure  = verb_count >= 2 and entity_count == 0
-        has_factual_structure  = entity_count >= 1 and noun_count >= 1
-        
-        # Blueprint: Multimodal / Semantic Intent Detection
-        # Old way: t.text.lower() in ["right", "wrong"]. FAILED (Hardcoded English bias).
-        # New way: Semantic Intent Vectors + Multimodal Emotion & Context.
+        # ── Cross-modal numeric signals from Phase 1.1 ─────────────────
+        # media_payloads = norm_result.media_metadata (set after Phase 1.1)
+        # Keys from _normalize_audio: mel_mean, zcr_mean, spectral_centroid_mean
+        # Keys from _normalize_image: mean_rgb, std_rgb, ocr_text
+        # Keys from _normalize_voice: mel_mean, pitch_mean_hz, rms
 
-        audio_tone = ""
-        image_context = ""
-        document_type = ""
-        
-        # EXTRACT MULTIMODAL SIGNALS (Phase 1.1 se aayi hui real metadata)
-        if media_payloads:
-            for _, info in media_payloads.items():
-                meta = info.get("processed_metadata", {})
-                if "audio_tone" in meta: audio_tone = meta["audio_tone"]
-                if "primary_objects" in meta: image_context = meta["primary_objects"]
-                if "document_type" in meta: document_type = meta["document_type"]
+        audio_energy    = 0.0   # high energy = urgency/emotion (ZCR + RMS)
+        audio_pitch     = 0.0   # pitch mean Hz
+        image_edge_density = 0.0  # high edge = complex/structured image
+        image_color_variance = 0.0  # high variance = rich/emotional image
 
-        # UNIVERSAL SYNTACTIC SIGNALS (spaCy Language Agnostic features)
-        has_question_structure = any(t.pos_ == "PRON" for t in doc) # A generic WH-question marker
-        has_abstract_nouns = noun_count >= 1 and sum(1 for t in doc if t.pos_ == "NOUN" and len(t.text) > 6) >= 1
-        has_imperative = any(t.pos_ == "VERB" and t.dep_ == "ROOT" for t in doc)
+        if isinstance(media_payloads, dict):
+            # Audio signals — numeric, language agnostic
+            zcr  = media_payloads.get("zcr_mean", 0.0)
+            rms  = media_payloads.get("rms_before", 0.0)
+            audio_energy = float(zcr) * 0.5 + float(rms) * 0.5
 
-        # SEMANTIC INTENT SCORES (Simulating latent space hits without hardcoded string matching on raw query)
-        semantic_scores = {"ethical": 0.0, "philosophical": 0.0, "procedural": 0.0, "factual": 0.0, "conceptual": 0.0}
-        
+            pitch = media_payloads.get("pitch_mean_hz", 0.0)
+            audio_pitch = float(pitch) if pitch else 0.0
+
+            # Image signals — numeric, language agnostic
+            std_rgb = media_payloads.get("std_rgb", [])
+            if std_rgb:
+                image_color_variance = float(sum(std_rgb) / len(std_rgb))
+
+        # ── Memory Graph semantic scores — embedding cosine similarity ──
+        # Score from Memory Graph = semantic relevance to known concepts
+        # We use the raw embedding score directly — no English string match
+        semantic_scores = {
+            "ethical":       0.0,
+            "philosophical": 0.0,
+            "procedural":    0.0,
+            "factual":       0.0,
+            "conceptual":    0.0,
+        }
+
+        graph_intent_score = 0.0
         if memory_graph is not None:
-             try:
-                 intent_activations = memory_graph.get_similar_concepts(query_emb.tolist(), top_k=5)
-                 for act in intent_activations:
-                     concept = act.get("concept", "")
-                     score = act.get("score", 0.0)
-                     # Concept distances - conceptually safer than matching user utterance directly
-                     if "ethic" in concept or "moral" in concept: semantic_scores["ethical"] += score
-                     if "truth" in concept or "exist" in concept: semantic_scores["philosophical"] += score
-                     if "step" in concept or "how" in concept: semantic_scores["procedural"] += score
-                     if "fact" in concept or "who" in concept: semantic_scores["factual"] += score
-             except Exception:
-                 pass
+            try:
+                activated = memory_graph.get_similar_concepts(
+                    query_emb.tolist(), top_k=5
+                )
+                if activated:
+                    graph_intent_score = activated[0].get("score", 0.0)
 
-        # ── Blueprint: "ethical ?" ──
+                # Distribute scores by embedding position in concept space
+                # Top activated concepts — their weighted scores feed intent types
+                # No string matching — pure cosine similarity distribution
+                for i, act in enumerate(activated):
+                    score  = act.get("weighted_score", act.get("score", 0.0))
+                    # Top 1-2 concepts → factual (specific, grounded)
+                    # Middle concepts  → conceptual/philosophical (abstract)
+                    # Lower concepts   → procedural (process, action)
+                    if i == 0:
+                        semantic_scores["factual"]       += score * 0.4
+                        semantic_scores["conceptual"]    += score * 0.3
+                    elif i == 1:
+                        semantic_scores["conceptual"]    += score * 0.3
+                        semantic_scores["philosophical"] += score * 0.2
+                    elif i >= 2:
+                        semantic_scores["procedural"]    += score * 0.2
+                        semantic_scores["ethical"]       += score * 0.1
+
+                logging.info(
+                    f"[Layer1 Ph1.2] graph_score={graph_intent_score:.2f} | "
+                    f"semantic={semantic_scores}"
+                )
+            except Exception as e:
+                logging.warning(f"[Layer1 Ph1.2] Memory Graph unavailable: {e}")
+
+        # ── Thinking style indicators — computed signals only ───────────
+
+        # ETHICAL: value judgment structure + high audio energy (emotion)
+        # Language agnostic: ADJ+advmod/neg is universal dep_ pattern
         ethical_indicators = [
-            semantic_scores["ethical"] > 0.4,
-            audio_tone in ["urgent", "highly_emotional", "crying"],
-            any(t.dep_ in ("advmod", "neg") and t.pos_ == "ADJ" for t in doc) # Value judgments (Accha/Bura equivalents)
+            semantic_scores["ethical"] > 0.3,
+            has_value_judgment,                    # dep_ pattern — any language
+            audio_energy > 0.4,                    # numeric — emotion/urgency in voice
         ]
         has_ethical_indicators = any(ethical_indicators)
 
-        # ── Blueprint: "philosophical ?" ──
+        # PHILOSOPHICAL: abstract nouns + nested clause + no imperative
         philosophical_indicators = [
-            semantic_scores["philosophical"] > 0.4,
-            has_abstract_nouns and not has_question_structure and not has_imperative,
-            any(t.dep_ in ("ccomp", "xcomp") for t in doc) # Complex nested thoughts
+            semantic_scores["philosophical"] > 0.3,
+            has_abstract_nouns and not has_question_struct and not has_imperative,
+            has_nested_clause,                     # ccomp/xcomp — complex thought
         ]
         has_philosophical_indicators = any(philosophical_indicators)
 
-        # ── Blueprint: "Procedual ?" ──
+        # PROCEDURAL: process structure + imperative + high image edge density
         procedural_indicators = [
-            semantic_scores["procedural"] > 0.4,
-            has_process_structure,
-            has_imperative,
-            document_type in ["manual", "technical_guide", "code_repo"]
+            semantic_scores["procedural"] > 0.3,
+            has_process_structure,                 # verb>=2, entity==0
+            has_imperative,                        # ROOT VERB — command/instruction
         ]
         has_procedural_indicators = any(procedural_indicators)
 
-        # ── Blueprint: "Factual ?" ──
+        # FACTUAL: entity-heavy + factual structure + no causal
         factual_indicators = [
-            semantic_scores["factual"] > 0.4,
-            has_factual_structure,
-            document_type in ["invoice", "report", "news"],
-            entity_count >= 1 and not has_causal_structure
+            semantic_scores["factual"] > 0.3,
+            has_factual_structure,                 # entity>=1 + noun>=1
+            entity_count >= 1 and not has_causal_structure,
         ]
         has_factual_indicators = any(factual_indicators)
 
-        # ── Blueprint: "Conceptual ?" ──
+        # CONCEPTUAL: causal structure + abstract + no entities
         conceptual_indicators = [
-            has_causal_structure,
-            noun_count >= 1 and entity_count == 0,
-            image_context in ["abstract_art", "diagram"]
+            semantic_scores["conceptual"] > 0.3,
+            has_causal_structure,                  # advcl/mark — "why/because" structure
+            noun_count >= 1 and entity_count == 0, # nouns but no specific entities
         ]
         has_conceptual_indicators = any(conceptual_indicators)
 
-        # ── Intent Type Resolution (Blueprint: thinking style) ──
+        # ── Intent type resolution ──────────────────────────────────────
         intent_type = "general"
         if has_ethical_indicators:
             intent_type = "ethical"
@@ -4228,162 +4816,207 @@ class IntentDecompositionEngine:
         elif has_conceptual_indicators:
             intent_type = "conceptual"
 
-        # Mixed intent detection (multiple thinking styles)
+        # Mixed — multiple thinking styles active
         thinking_styles_detected = sum([
             has_factual_indicators,
             has_conceptual_indicators,
             has_ethical_indicators,
             has_philosophical_indicators,
-            has_procedural_indicators
+            has_procedural_indicators,
         ])
-        
         if thinking_styles_detected >= 2:
             intent_type = "mixed"
 
-        # ── Memory Graph semantic activation — Phase 6 ke baad rich hoga ──
-        graph_intent_score = 0.0
-        if memory_graph is not None:
-            try:
-                activated = memory_graph.get_similar_concepts(
-                    query_emb.tolist(), top_k=3
-                )
-                if activated:
-                    graph_intent_score = activated[0].get("score", 0.0)
-                logging.info(f"[Layer1 Ph1.2] graph_intent_score={graph_intent_score:.2f}")
-            except Exception as e:
-                logging.error(f"[Layer1 Ph1.2] Graph error: {e}")
+        # ── Store Phase 1.2 bundle ──────────────────────────────────────
+        state["layer1_intent_type"]          = intent_type
+        state["layer1_is_analytical"]        = is_analytical
+        state["layer1_has_verb"]             = has_verb
+        state["layer1_has_entity"]           = has_entity
+        state["layer1_graph_intent_score"]   = graph_intent_score
+        state["layer1_audio_energy"]         = audio_energy
+        state["layer1_image_color_variance"] = image_color_variance
+        state["layer1_thinking_styles_count"]= thinking_styles_detected
 
         logging.info(
-            f"[Layer1 Ph1.2] intent_type={intent_type} | is_analytical={is_analytical} | "
-            f"has_verb={has_verb} | has_entity={has_entity} | "
+            f"[Layer1 Ph1.2] intent_type={intent_type} | "
+            f"analytical={is_analytical} | entity={has_entity} | "
+            f"causal={has_causal_structure} | imperative={has_imperative} | "
             f"graph_score={graph_intent_score:.2f} | "
-            f"ethical={has_ethical_indicators} | philosophical={has_philosophical_indicators} | "
-            f"factual={has_factual_indicators} | conceptual={has_conceptual_indicators} | "
-            f"procedural={has_procedural_indicators} | mixed={thinking_styles_detected>=2}"
+            f"audio_energy={audio_energy:.3f} | "
+            f"styles_count={thinking_styles_detected}"
         )
 
-
         # ════════════════════════════════════
-        # PHASE 1.3 — Goal Decomposition (HEART of Layer 1 and MULTIMODAL GOAL EXTRACTION)
+        # PHASE 1.3 — Goal Decomposition
         # Blueprint: "ChatGPT ek question ko multiple invisible goals mein break karta hai"
-        # Blueprint: "Brain: No subscription awareness — sirf config se power milti hai"
         # Blueprint: "Bina Memory Graph ke Intent sirf text hoga, Meaning nahi"
-        #
-        # Primary: Memory Graph — concepts as goals (semantic, no labels)
-        # Fallback: spaCy noun chunks — explicit sub-topics from query structure
-        # No hardcoded goal strings | No tier names in brain
+        # Sources: Memory Graph (primary) → spaCy noun chunks (fallback)
+        # max_goals: config se — billing ka real value
+        # No hardcoded strings | No tier names | Language agnostic
         # ════════════════════════════════════
 
-        # max_goals config se inject hota hai - brain padhta hai, import nahi karta
-        layer1_config = state.get("layer1_config", {})
-        max_goals = layer1_config.get("max_goals", 2)
+        # config se directly — layer1_config state mein set nahi hota
+        max_goals = config.get("max_goals", 2)
 
         sub_goals = []
 
-        # INDUSTRY LEVEL UPGRADE: Multimodal Goal Extraction
-        text_goals = []
-        image_goals = []
-        document_goals = []
-        audio_goals = []
-        
-        # 1. Text Goals - noun chunks from Phase 1.1
-        if noun_chunks:
-            text_goals = [chunk for chunk in noun_chunks if len(chunk.strip()) > 2]
-        
-        # 2. Image Goals - from Phase 1.1 industry-level metadata
-        if media_payloads:
-            for filename, file_info in media_payloads.items():
-                meta = file_info.get("processed_metadata", {})
-                content_type = file_info.get("content_type", "")
-                if content_type.startswith("image/"):
-                    image_goals.extend(meta.get("extracted_objects", []))
-                    image_goals.extend(meta.get("visual_features", []))
-                elif content_type.startswith("audio/"):
-                    audio_goals.extend(meta.get("speech_segments", []))
-                    audio_goals.extend(meta.get("audio_features", []))
-                elif content_type == "application/pdf":
-                    document_goals.extend(meta.get("sections", []))
-                    document_goals.extend(meta.get("topics", []))
-        
-        # 3. Memory Graph Goals - hidden semantic goals
+        # ── PRIMARY: Memory Graph — semantic hidden goals ──────────────
+        # Blueprint: "Bina Memory Graph ke Intent sirf text hoga, Meaning nahi"
+        # Memory Graph ke concepts = real hidden goals jo text se nahi milte
         if memory_graph is not None:
             try:
-                activated = memory_graph.get_similar_concepts(query_emb.tolist(), top_k=max_goals)
-                graph_goals = [c["concept"] for c in activated if c.get("score", 0) > 0.3]
+                activated = memory_graph.get_similar_concepts(
+                    query_emb.tolist(), top_k=max_goals
+                )
+                graph_goals = [
+                    c["concept"] for c in activated
+                    if c.get("score", 0) > 0.3
+                ]
                 sub_goals.extend(graph_goals)
-            except Exception:
-                pass
-        
-        # 4. Multimodal Fusion Goals - Proper Semantic Context instead of naive concatenation
-        if image_goals and text_goals:
-            fusion_goals = []
-            for img_goal in image_goals[:3]:
-                for text_goal in text_goals[:3]:
-                    fusion_goals.append(f"{text_goal} in context of {img_goal}")
-            sub_goals.extend(fusion_goals)
-        
-        # 5. Add modality-specific goals prioritizing text
-        sub_goals.extend(text_goals[:max_goals//2])
-        sub_goals.extend(image_goals[:max_goals//4])
-        sub_goals.extend(document_goals[:max_goals//4])
-        sub_goals.extend(audio_goals[:max_goals//4])
-        
-        # 6. Deduplicate and apply config-based limit
-        unique_goals = []
+            except Exception as e:
+                logging.warning(f"[Ph1.3] Memory Graph unavailable: {e}")
+
+        # ── SECONDARY: spaCy noun chunks — explicit sub-topics ─────────
+        # Blueprint: "Text → noun chunks"
+        # noun_chunks already Phase 1.1 se nikle hain — reuse karo
+        # Language agnostic — xx_ent_wiki_sm har language mein noun chunks nikalta hai
+        if noun_chunks:
+            text_goals = [
+                chunk for chunk in noun_chunks
+                if len(chunk.strip()) > 2
+                and chunk.lower() not in sub_goals  # duplicate avoid
+            ]
+            sub_goals.extend(text_goals)
+
+        # ── TERTIARY: Entities — named anchors as goals ─────────────────
+        # Blueprint: "Image → detected objects" proxy
+        # spaCy entities = real-world anchors (persons, places, orgs, dates)
+        # Language agnostic — NER universal
+        if entities:
+            entity_goals = [e[0] for e in entities[:max_goals]]
+            for eg in entity_goals:
+                if eg.lower() not in [g.lower() for g in sub_goals]:
+                    sub_goals.append(eg)
+
+        # ── AUDIO signal → depth goal ───────────────────────────────────
+        # Blueprint: "Audio → intent emphasis"
+        # High audio_energy = urgency — add the core query as priority goal
+        if audio_energy > 0.4 and normalized_query not in sub_goals:
+            sub_goals.insert(0, normalized_query)  # top priority
+
+        # ── DOCUMENT signal → topic goals ──────────────────────────────
+        # Blueprint: "Document → sections/topics"
+        # Phase 1.1 media_metadata se real keys: heading_count, sample_headings
+        if isinstance(media_payloads, dict):
+            headings = media_payloads.get("sample_headings", [])
+            for h in headings[:max_goals // 2]:
+                if h and h not in sub_goals:
+                    sub_goals.append(h)
+
+        # ── Deduplicate + billing limit enforce ─────────────────────────
         seen = set()
+        unique_goals = []
         for goal in sub_goals:
-            if goal not in seen:
+            key = goal.lower().strip()
+            if key and key not in seen:
+                seen.add(key)
                 unique_goals.append(goal)
-                seen.add(goal)
-        
+
         sub_goals = unique_goals[:max_goals]
 
         logging.info(
-            f"[Layer1 Ph1.3] INDUSTRY LEVEL - goals extracted={len(sub_goals)} | max_goals config={max_goals}"
+            f"[Ph1.3] goals={len(sub_goals)} | max_goals={max_goals} | "
+            f"graph_activated={graph_intent_score:.2f} | "
+            f"audio_energy={audio_energy:.3f}"
         )
 
         # ════════════════════════════════════
-        # PHASE 1.4 — QUERY EXPANSION (CHATGPT STYLE and SEMANTIC + MULTIMODAL)
+        # PHASE 1.4 — QUERY EXPANSION
+        # Blueprint: "Semantic expansion (embedding neighbors) +
+        #             Cross-modal enrichment: Image→tags, Doc→keywords, Audio→emphasis"
+        # Output: expanded_queries[]
+        # max_query_expansion: config se — billing ka real value
+        # Language agnostic — no string match on query
         # ════════════════════════════════════
-        max_expansion = layer1_config.get("max_query_expansion", 1)
+
+        max_expansion = config.get("max_query_expansion", 1)
 
         expanded_queries = [normalized_query]
         temp_expanded    = []
 
-        # ── Primary: Memory Graph semantic expansion ──────────
+        # ── Primary: Memory Graph semantic expansion ──────────────────
+        # Blueprint: "Semantic expansion (embedding neighbors)"
+        # Cosine similarity se neighbors — no string match on query
         if memory_graph is not None:
             try:
-                neighbors = memory_graph.get_similar_concepts(query_emb.tolist(), top_k=max_expansion)
+                neighbors = memory_graph.get_similar_concepts(
+                    query_emb.tolist(), top_k=max_expansion
+                )
                 for n in neighbors:
                     concept = n.get("concept", "")
-                    if concept and n.get("score", 0) > 0.3 and concept.lower() not in normalized_query.lower():
+                    score   = n.get("score", 0.0)
+                    # score threshold only — no string match on query
+                    if concept and score > 0.3:
                         temp_expanded.append(f"{normalized_query} {concept}")
-            except Exception:
-                pass
+            except Exception as e:
+                logging.warning(f"[Ph1.4] Memory Graph unavailable: {e}")
 
-        # ── Secondary: spaCy entities linguistic expansion ─────────────
+        # ── Secondary: spaCy entities — linguistic expansion ──────────
+        # Blueprint: "Image → object tags add" proxy via NER
+        # Entities = real-world anchors — language agnostic
         if entities and len(temp_expanded) < max_expansion:
             entity_texts   = [e[0] for e in entities[:3]]
             entity_variant = f"{normalized_query} {' '.join(entity_texts)}"
             if entity_variant.strip() != normalized_query.strip():
                 temp_expanded.append(entity_variant)
 
-        # ── Multimodal Hint Injection ─────────────
-        if audio_tone in ["urgent", "highly_emotional"]:
-            temp_expanded.append(f"{normalized_query} urgent action")
-        
+        # ── Tertiary: Document headings expansion ─────────────────────
+        # Blueprint: "Document → keywords add"
+        # Phase 1.1 real key: sample_headings
+        if isinstance(media_payloads, dict):
+            headings = media_payloads.get("sample_headings", [])
+            if headings and len(temp_expanded) < max_expansion:
+                heading_variant = f"{normalized_query} {' '.join(headings[:2])}"
+                temp_expanded.append(heading_variant)
+
+        # ── Audio: intent emphasis — numeric signal ────────────────────
+        # Blueprint: "Audio → intent emphasis"
+        # High audio_energy = urgency — sub_goals[0] ko front mein rakh do
+        # Duplicate nahi, emphasis: sub_goal concept + query
+        if audio_energy > 0.4 and sub_goals:
+            emphasis_variant = f"{sub_goals[0]} {normalized_query}"
+            if emphasis_variant not in temp_expanded:
+                temp_expanded.append(emphasis_variant)
+
+        # ── Final assembly — billing limit enforce ─────────────────────
         for v in temp_expanded:
             if v not in expanded_queries and len(expanded_queries) < max_expansion:
                 expanded_queries.append(v)
 
-        logging.info(f"[Layer1 Ph1.4] expanded queries={len(expanded_queries)} | max_expansion={max_expansion}")
+        logging.info(
+            f"[Ph1.4] expanded={len(expanded_queries)} | "
+            f"max_expansion={max_expansion} | "
+            f"audio_energy={audio_energy:.3f}"
+        )
 
         # ════════════════════════════════════
         # PHASE 1.5 — Reasoning Depth Estimation (COMPLEXITY ENGINE)
+        # Blueprint: "ChatGPT decide karta hai — Short Answer chalega ya
+        #             heavy multi-layer reasoning chahiye?"
+        # Blueprint: "Depth decide hota hai:
+        #             (i) Number of modalities
+        #             (ii) Conflict between modalities
+        #             (iii) Number of goals
+        #             (iv) Graph relevance"
+        # Output: shallow → ultra_deep
+        # Billing cap: config["max_depth"] se enforce
         # ════════════════════════════════════
+
         n_entities  = len(entities)
         goal_count  = len(sub_goals)
 
+        # ── Signal 1: Graph relevance ─────────────────────────────────
+        # Memory Graph se semantic depth — kitna complex concept space hai
         graph_relevance = 0.0
         if memory_graph is not None:
             try:
@@ -4391,18 +5024,35 @@ class IntentDecompositionEngine:
             except Exception:
                 pass
 
-        # Blueprint Trigger: "Text + image contradiction -> ultra_deep reasoning"
+        # ── Signal 2: Number of modalities — Blueprint (i) ────────────
+        # Har active modality = complexity badhti hai
+        # media_payloads dict mein actual modality keys hain
+        active_modalities = 1  # text hamesha hota hai
+        if isinstance(media_payloads, dict):
+            if media_payloads.get("mel_mean") is not None:    # audio/voice
+                active_modalities += 1
+            if media_payloads.get("mean_rgb") is not None:    # image
+                active_modalities += 1
+            if media_payloads.get("page_count") is not None:  # document
+                active_modalities += 1
+            if media_payloads.get("fps") is not None:         # video
+                active_modalities += 1
+
+        # ── Signal 3: Conflict between modalities — Blueprint (ii) ────
+        # audio high energy + image high variance = contradicting signals
+        # thinking_styles_detected >= 3 = multiple cognitive modes active
         has_multimodal_contradiction = False
-        if media_payloads and audio_tone == "urgent" and "calm" in normalized_query.lower():
+        if audio_energy > 0.5 and image_color_variance > 50:
             has_multimodal_contradiction = True
-        elif image_context == "danger" and "safe" in normalized_query.lower():
+        if thinking_styles_detected >= 3:
             has_multimodal_contradiction = True
-            
-        if has_multimodal_contradiction:
+
+        # ── Depth decision — all signals combined ──────────────────────
+        if has_multimodal_contradiction or active_modalities >= 3:
             required_depth = "ultra_deep"
         elif graph_relevance > 0.8 or goal_count >= 5:
             required_depth = "ultra_deep"
-        elif graph_relevance > 0.7 or goal_count >= 4:
+        elif graph_relevance > 0.7 or goal_count >= 4 or active_modalities >= 2:
             required_depth = "very_deep"
         elif goal_count >= 3 or n_entities >= 3:
             required_depth = "deep"
@@ -4413,57 +5063,164 @@ class IntentDecompositionEngine:
         else:
             required_depth = "shallow"
 
-        max_allowed_depth = layer1_config.get("max_depth", "ultra_deep")
+        # ── Billing cap — config["max_depth"] enforce ─────────────────
+        # Brain compute karta hai required_depth
+        # Lekin billing decide karta hai max allowed
         depth_levels = ["shallow", "normal", "moderate", "deep", "very_deep", "ultra_deep"]
-        
+        max_allowed_depth = config.get("max_depth", "ultra_deep")
+
         if max_allowed_depth in depth_levels and required_depth in depth_levels:
             if depth_levels.index(required_depth) > depth_levels.index(max_allowed_depth):
                 required_depth = max_allowed_depth
 
-        logging.info(f"[Layer1 Ph1.5] depth={required_depth} | contradiction={has_multimodal_contradiction}")
+        # ── NLP Power Cap — billing se ────────────────────────────────
+        # max_nlp_power = kitni deep spaCy processing allowed hai
+        # Free=5 (surface), Jarvis=100 (full dependency chain)
+        # Yeh signal downstream Phase 1.2 enhanced signals ke liye hai
+        # Abhi: token window cap ke roop mein use hoga
+        # nlp_power = config.get("max_nlp_power", 5)
 
-        # ════════════════════════════════════
+        # nlp_power → spaCy processing window (tokens)
+        # Free tier: sirf pehle 100 tokens deep analyze
+        # Jarvis: poora text analyze
+        # Formula: nlp_power * 20 = max tokens spaCy deeply processes
+        # nlp_token_window = nlp_power * 20   # free=100, jarvis=2000
+
+        # State mein store — downstream phases use karenge
+        state["layer1_nlp_token_window"] = nlp_token_window
+        state["layer1_required_depth"]   = required_depth
+        state["layer1_active_modalities"]= active_modalities
+
+        logging.info(
+            f"[Ph1.5] depth={required_depth} | "
+            f"modalities={active_modalities} | "
+            f"contradiction={has_multimodal_contradiction} | "
+            f"graph={graph_relevance:.2f} | "
+            f"goals={goal_count} | entities={n_entities} | "
+            f"nlp_window={nlp_token_window}"
+        )
+
+        # ════════════════════════════════════════════════════════════════
         # PHASE 1.6 — KNOWLEDGE DOMAIN MAPPING (VERDICT MODERN and CROSS-MODAL)
-        # ════════════════════════════════════
+        # Blueprint: "Scriptures, Science, Ethics, Philosophy, Technology etc"
+        # Blueprint: "Domain detect hota hai:
+        #             (i) Text semantics (ii) Image category
+        #             (iii) Document type (iv) Memory graph"
+        # Output: multi-domain tags — numeric signals se, hardcoded labels se nahi
+        # ════════════════════════════════════════════════════════════════
         domains = []
 
+        # ── (iv) Memory Graph — primary semantic domain ────────────────
+        # Cosine similarity se related concepts → domain emerge karte hain
+        # No hardcoded domain names — graph se aate hain
         if memory_graph is not None:
             try:
-                activated = memory_graph.get_similar_concepts(query_emb.tolist(), top_k=3)
-                domains.extend([c["concept"] for c in activated if c.get("score", 0) > 0.35])
-            except Exception:
-                pass
+                activated = memory_graph.get_similar_concepts(
+                    query_emb.tolist(), top_k=3
+                )
+                domains.extend([
+                    c["concept"] for c in activated
+                    if c.get("score", 0) > 0.35
+                ])
+            except Exception as e:
+                logging.warning(f"[Ph1.6] Memory Graph unavailable: {e}")
 
+        # ── (i) Text semantics — entities + intent type ────────────────
+        # spaCy entities = real-world domain anchors (language agnostic)
         if entities:
             domains.extend([ent[0] for ent in entities[:3]])
-            
-        if document_type:
-            domains.append(document_type)
-        if image_context:
-            domains.append(image_context)
 
-        # Deduplicate
-        domains = list(set([d for d in domains if d]))
-        if not domains:
-            domains = ["general"]
+        # intent_type → domain signal (Phase 1.2 ka output — computed, not label)
+        # conceptual/philosophical → abstract domain
+        # factual → concrete domain
+        # ethical → ethics/dharma domain
+        if intent_type in ("philosophical", "ethical"):
+            domains.append("dharma_ethics")
+        elif intent_type == "procedural":
+            domains.append("technical")
 
-        logging.info(f"[Layer1 Ph1.6] domains={domains}")
+        # ── (ii) Image category — numeric signals ─────────────────────
+        # Phase 1.1 media_metadata ke real numeric keys se
+        # high std_rgb variance = complex/artistic image (visual arts, architecture)
+        # low variance + high page_count proxy = technical/diagram
+        if isinstance(media_payloads, dict):
+            # Image signal — std_rgb variance already computed in Ph1.2
+            if image_color_variance > 50:
+                domains.append("visual_arts")      # high color variance = rich visual
+            elif image_color_variance > 15:
+                domains.append("visual_technical")  # moderate = structured/diagram
 
-        # ════════════════════════════════════
-        # PHASE 1.7 — Intent Bundle (FINAL MULTIMODAL OBJECT)
-        # ════════════════════════════════════
+            # ── (iii) Document type — structural signals ───────────────
+            # Phase 1.1 _normalize_document real keys
+            has_tables   = media_payloads.get("has_tables", False)
+            heading_count = media_payloads.get("heading_count", 0)
+            page_count   = media_payloads.get("page_count", 0)
+
+            if has_tables and heading_count > 3:
+                domains.append("structured_data")    # tables + headings = report/data
+            elif heading_count > 5:
+                domains.append("long_form_document")  # many headings = book/paper
+            elif page_count > 10:
+                domains.append("multi_page_document")
+
+        # ── Analytical signal → science/research domain ────────────────
+        # is_analytical already computed in Phase 1.2 — spaCy dep_ signal
+        if is_analytical:
+            domains.append("analytical")
+
+        # ── Deduplicate + fallback ─────────────────────────────────────
+        seen = set()
+        unique_domains = []
+        for d in domains:
+            if d and d.lower() not in seen:
+                seen.add(d.lower())
+                unique_domains.append(d)
+
+        domains = unique_domains if unique_domains else ["general"]
+
+        logging.info(f"[Ph1.6] domains={domains} | intent_type={intent_type}")
+
+        # ════════════════════════════════════════════════════════════════
+        # PHASE 1.7 — INTENT BUNDLE (FINAL MULTIMODAL OBJECT)
+        # Blueprint: "LAYER 1 ka output ek object hota hai, jo saari layers use krti"
+        # Blueprint: "Ye tumhara AGI ka thought packet hai"
+        # Saari next layers isi pe kaam karti hain — sab signals yahan honge
+        # ════════════════════════════════════════════════════════════════
         intent_bundle = {
-            "raw_query":         raw_query,
-            "normalized_query":  normalized_query,
-            "query_embedding":   query_emb.tolist(),
-            "intent_type":       intent_type,
-            "sub_goals":         sub_goals,
-            "expanded_queries":  expanded_queries,
-            "required_depth":    required_depth,
-            "domains":           domains,
-            "has_entity":        has_entity,
-            "graph_intent_score": graph_intent_score,
-            "audio_tone":        audio_tone,
+            # ── Core query ──────────────────────────────────────────────
+            "raw_query":              raw_data,
+            "normalized_query":       normalized_query,
+            "query_embedding":        query_emb.tolist(),
+
+            # ── Phase 1.1 — linguistic signals ──────────────────────────
+            "entities":               entities,
+            "noun_chunks":            noun_chunks,
+
+            # ── Phase 1.2 — thinking type + signals ────────────────────
+            "intent_type":            intent_type,
+            "is_analytical":          is_analytical,
+            "has_verb":               has_verb,
+            "has_entity":             has_entity,
+            "graph_intent_score":     graph_intent_score,
+            "thinking_styles_count":  thinking_styles_detected,
+
+            # ── Phase 1.3 — goals ───────────────────────────────────────
+            "sub_goals":              sub_goals,
+
+            # ── Phase 1.4 — expanded queries ────────────────────────────
+            "expanded_queries":       expanded_queries,
+
+            # ── Phase 1.5 — depth + modality ────────────────────────────
+            "required_depth":         required_depth,
+            "active_modalities":      active_modalities,
+            "nlp_token_window":       nlp_token_window,
+
+            # ── Phase 1.6 — domains ─────────────────────────────────────
+            "domains":                domains,
+
+            # ── Cross-modal numeric signals ─────────────────────────────
+            "audio_energy":           audio_energy,
+            "image_color_variance":   image_color_variance,
         }
 
         state["layer1_intent_bundle"] = intent_bundle
@@ -4480,8 +5237,8 @@ class MemoryAwareQueryPruner:
                 (ii) kya repeat query waste hoti?
                 RESULT: (i) drop (ii) merge (iii) deeper"
 
-    Drop   = score > 0.85 — strongly in memory, repeat waste hogi
-    Merge  = duplicate strings — seen set se deduplicate
+    Drop   = score > drop_threshold — tier-aware (max_docs se derive hota hai)
+    Merge  = duplicate strings — seen set se deduplicate (language agnostic)
     Deeper = score low + required_depth deep — naya topic, rakhna zaroori
     Koi string label nahi, koi hardcoded English nahi.
     """
@@ -4490,12 +5247,14 @@ class MemoryAwareQueryPruner:
         self,
         queries: list,
         memory_graph,
-        layer1_bundle: dict
+        layer1_bundle: dict,
+        cognitive_profile: dict = None    # ADDED — billing signals ke liye
     ) -> list:
         """
-        queries       : Phase 2.4 ka output — plain string list
-        memory_graph  : Layer 4 hook
-        layer1_bundle : required_depth ke liye — billing config se aaya
+        queries          : Phase 2.4 ka output — plain string list
+        memory_graph     : Layer 4 hook — estimate_relevance() call
+        layer1_bundle    : Layer 1 signals — required_depth, is_analytical, etc.
+        cognitive_profile: Billing config — max_docs, deep_reasoning
 
         Returns: pruned list — drop/merge/deeper decisions applied
         """
@@ -4503,24 +5262,64 @@ class MemoryAwareQueryPruner:
         if memory_graph is None or not queries:
             return queries
 
+        profile = cognitive_profile or {}
 
+        # ── BILLING: drop threshold — max_docs se derive karo ────────
+        # max_docs bada = zyada resources allowed = lenient drop (Jarvis)
+        # max_docs chota = resource constrained = aggressive drop (free)
+        # Formula: 0.75 + log10(max_docs+1) / 10.0 capped at 0.97
+        # free(6)=0.83, paid(12)=0.86, ultra(25)=0.89, biz(35)=0.91,
+        # enterprise(50)=0.92, jarvis(999999)=0.97
+        import math
+        max_docs = profile.get("max_docs", 6)
+        if max_docs == -1 or max_docs >= 999999:
+            drop_threshold = 0.97   # jarvis — almost never drop
+        else:
+            drop_threshold = min(0.97, 0.75 + math.log10(max_docs + 1) / 10.0)
+
+        # ── BILLING: deep_reasoning → lenient threshold ───────────────
+        # deep_reasoning=True = system deeply explore karna chahta hai
+        # → threshold raise karo (zyada queries rakhne do)
+        deep_reasoning = profile.get("deep_reasoning", False)
+        if deep_reasoning:
+            drop_threshold = min(0.97, drop_threshold + 0.03)
+
+        # ── Layer 1 signals ────────────────────────────────────────────
         DEPTH_INDEX = {
             "shallow": 0, "normal": 1, "moderate": 2,
             "deep": 3, "very_deep": 4, "ultra_deep": 5
         }
-        required_depth     = layer1_bundle.get("required_depth", "shallow")
-        depth_idx          = DEPTH_INDEX.get(required_depth, 0)
-        is_deep            = depth_idx >= 3
+        bundle               = layer1_bundle or {}
+        required_depth       = bundle.get("required_depth", "shallow")
+        depth_idx            = DEPTH_INDEX.get(required_depth, 0)
+        is_deep              = depth_idx >= 3
 
         # Layer 1 Phase 1.2 signals — real power
-        is_analytical      = layer1_bundle.get("is_analytical", False)
-        graph_intent_score = layer1_bundle.get("graph_intent_score", 0.0)
+        is_analytical        = bundle.get("is_analytical", False)
+        graph_intent_score   = bundle.get("graph_intent_score", 0.0)
+        audio_energy         = bundle.get("audio_energy", 0.0)        # ADDED
+        active_modalities    = bundle.get("active_modalities", 1)     # ADDED
+        thinking_styles      = bundle.get("thinking_styles_count", 0) # ADDED
 
-        pruned = []
-        seen   = set()
+        # ── Multimodal keep signals ────────────────────────────────────
+        # audio_energy > 0.4 = urgent voice query — kabhi drop nahi
+        # active_modalities > 1 = complex multimodal input — context zaroori
+        # thinking_styles >= 2 = multi-angle query — keep karo
+        is_multimodal_complex = (
+            audio_energy > 0.4 or
+            active_modalities > 1 or
+            thinking_styles >= 2
+        )
+
+        pruned  = []
+        seen    = set()
+        dropped = 0
+        kept    = 0
 
         for q in queries:
-            # Merge — duplicate deduplicate
+            # ── MERGE — duplicate deduplicate ─────────────────────────
+            # Blueprint: "kuch Merge"
+            # lowercase dedup — language agnostic
             key = q.lower().strip()
             if key in seen:
                 continue
@@ -4531,24 +5330,39 @@ class MemoryAwareQueryPruner:
             except Exception as e:
                 logging.warning(f"[Ph2.5] memory error: {e}")
                 pruned.append(q)
+                kept += 1
                 continue
 
-            # Drop — strongly in memory, repeat waste hogi
+            # ── DROP — strongly in memory, repeat waste hogi ──────────
             # Blueprint: "kya ye knowledge already store hai? drop karo"
-            if score > 0.85 and not is_analytical:
+            # Guard: analytical + multimodal complex queries NEVER drop
+            if score > drop_threshold and not is_analytical and not is_multimodal_complex:
+                dropped += 1
                 continue
 
-            # Deeper — Blueprint: "score low + required_depth deep = naya topic, rakhna zaroori"
+            # ── DEEPER — naya topic, rakhna zaroori ───────────────────
+            # Blueprint: "score low + required_depth deep = naya topic, rakhna zaroori"
             if is_deep and score < 0.3:
                 pruned.append(q)
+                kept += 1
                 continue
 
+            # ── GRAPH ACTIVATED ────────────────────────────────────────
+            # graph_intent_score > 0.6 = concepts graph mein strongly connected
             if graph_intent_score > 0.6 and score > 0.3:
                 pruned.append(q)
+                kept += 1
                 continue
 
-            # Normal — drop nahi, deeper nahi — as is rakhna hai
+            # ── NORMAL — rakhna hai ────────────────────────────────────
             pruned.append(q)
+            kept += 1
+
+        logging.info(
+            f"[Ph2.5] in={len(queries)} kept={kept} dropped={dropped} "
+            f"threshold={drop_threshold:.2f} is_deep={is_deep} "
+            f"audio={audio_energy:.2f} modalities={active_modalities}"
+        )
 
         # Blueprint: fallback — kuch to dena hai Layer 3 ko
         return pruned if pruned else queries
@@ -4559,43 +5373,45 @@ class MemoryAwareQueryPruner:
 # .......Phase 2.1 : INTENT-wise QUERY BRANCHING.........
 class IntentQueryBrancher:
     """
-    Blueprint: "har intent ke liye alag query path banana — yhi se system smart lgta hai"
-    Blueprint: "decision-based, static nahi"
-    Blueprint: "Concepts nikal ke aate hain"
-
-    Layer 1 ne sub_goals (Memory Graph), entities (spaCy), noun_chunks nikale —
-    inhe base_query ke saath combine karke genuinely alag query paths banao.
-    Koi intent_state label nahi. Koi hardcoded English string nahi.
-    Language agnostic — embedding aur spaCy dono language se upar hain.
+    Blueprint: "har intent ke liye alag query path banana"
+    Industry Upgrade: Multimodal branching —
+      Text: sub_goals + entities + noun_chunks
+      Audio: audio_energy se urgency branch
+      Image: image_color_variance se visual branch
+      Document: sample_headings se section branches
+    Language agnostic — no string match on query content.
     """
 
-    def branch(self, base_query: str, layer1_bundle: dict, cognitive_profile: dict = None) -> list:
-        """
-        base_query    : Layer 1 ka normalized_query
-        layer1_bundle : Layer 1 ka poora output
-        Returns: list of actual query strings — genuinely alag angles
-        Ye strings directly Layer 3 mein search karengi
-        """
+    def branch(
+        self,
+        base_query: str,
+        layer1_bundle: dict,
+        cognitive_profile: dict = None
+    ) -> list:
+
+        # ── Layer 1 signals ────────────────────────────────────────────
         sub_goals      = layer1_bundle.get("sub_goals", [])
         entities       = [e[0] for e in layer1_bundle.get("entities", [])]
         noun_chunks    = layer1_bundle.get("noun_chunks", [])
         required_depth = layer1_bundle.get("required_depth", "normal")
-        branches = []
-        seen = set()
-    
-        # Layer 1 Phase 1.2 signals — real power
-        is_analytical      = layer1_bundle.get("is_analytical", False)
-        has_verb           = layer1_bundle.get("has_verb", False)
-        has_entity         = layer1_bundle.get("has_entity", False)
-        graph_intent_score = layer1_bundle.get("graph_intent_score", 0.0)
-    
-        # Numeric depth — string match nahi
+        is_analytical  = layer1_bundle.get("is_analytical", False)
+        has_verb       = layer1_bundle.get("has_verb", False)
+        has_entity     = layer1_bundle.get("has_entity", False)
+        graph_score    = layer1_bundle.get("graph_intent_score", 0.0)
+
+        # ── Multimodal signals from Layer 1 ───────────────────────────
+        audio_energy         = layer1_bundle.get("audio_energy", 0.0)
+        image_color_variance = layer1_bundle.get("image_color_variance", 0.0)
+        active_modalities    = layer1_bundle.get("active_modalities", 1)
+        # document headings — Phase 1.3 ne sub_goals mein daal diye already
+        # sample_headings directly bundle mein nahi — sub_goals se aate hain
+
         DEPTH_INDEX = {
             "shallow": 0, "normal": 1, "moderate": 2,
             "deep": 3, "very_deep": 4, "ultra_deep": 5
         }
         depth_idx = DEPTH_INDEX.get(required_depth, 1)
-    
+
         profile = cognitive_profile or {}
         COMPLEXITY_BRANCHES = {
             "low": 1, "normal": 2, "high": 3,
@@ -4604,94 +5420,159 @@ class IntentQueryBrancher:
         max_branches = COMPLEXITY_BRANCHES.get(
             profile.get("query_complexity", "normal"), 2
         )
-    
+
+        # Multimodal: zyada modalities = zyada branches
+        if active_modalities >= 3:
+            max_branches = min(max_branches + 2, 7)
+        elif active_modalities >= 2:
+            max_branches = min(max_branches + 1, 6)
+
         branches = []
-        seen = set()
-    
+        seen     = set()
+
         def add(q: str):
-            key = q.lower().strip()
-            if key and key not in seen:
-                seen.add(key)
+            # Dedup by seen set — no cross-language string match on content
+            key = q.strip()
+            key_norm = key.lower()
+            if key and key_norm not in seen:
+                seen.add(key_norm)
                 branches.append(q)
-    
-        # Branch 1 — base query hamesha
+
+        # ── Branch 1: Base query — hamesha ────────────────────────────
         add(base_query)
-    
-        # Branch 2 — sub_goals: Memory Graph ke concepts — real semantic angles
-        for goal in sub_goals:
-            if goal.lower() not in base_query.lower():
-                add(f"{base_query} {goal}")
-    
-        # Branch 3 — entities — complexity ke hisaab se
+
+        # ── Branch 2: sub_goals — Memory Graph concepts ────────────────
+        # No string match on base_query — seen set handles dedup
+        for goal in sub_goals[:max_branches]:
+            add(f"{base_query} {goal}")
+
+        # ── Branch 3: Entities — named anchors ────────────────────────
         if entities:
             add(f"{base_query} {' '.join(entities[:max_branches])}")
-    
-        # Branch 4 — noun_chunks — complexity ke hisaab se
+
+        # ── Branch 4: noun_chunks — structural topics ──────────────────
         for chunk in noun_chunks[:max_branches]:
-            if chunk.lower() not in base_query.lower():
-                add(f"{chunk} {base_query}")
-    
-        # Branch 5 — depth numeric >= 3 — extra entity angle
-        # REAL POWER: deep query mein zyada angles explore honge
+            add(f"{chunk} {base_query}")
+
+        # ── Branch 5: Deep query — entity-first angle ─────────────────
         if depth_idx >= 3:
             for ent in entities[:2]:
-                if ent.lower() not in base_query.lower():
-                    add(f"{ent} {base_query}")
-    
-        # Branch 6 — Layer 1 Phase 1.2 REAL POWER
-        # is_analytical=True → causal/conceptual angle add karo
-        # REAL POWER: analytical query ke liye ek extra conceptual branch
-        if is_analytical and graph_intent_score > 0.3:
+                add(f"{ent} {base_query}")
+
+        # ── Branch 6: Analytical — causal angle ───────────────────────
+        if is_analytical and graph_score > 0.3:
             for goal in sub_goals[:2]:
                 add(f"{goal} {base_query}")
-    
-        # Branch 7 — has_verb=True, no entity → procedural angle
-        # REAL POWER: process-oriented query ke liye verb-first branch
+
+        # ── Branch 7: Procedural — verb-first angle ───────────────────
         if has_verb and not has_entity and noun_chunks:
-            add(f"{noun_chunks[0]} {base_query}" if noun_chunks else base_query)
-    
+            add(f"{noun_chunks[0]} {base_query}")
+
+        # ── INDUSTRY UPGRADE: Audio modality branch ───────────────────
+        # Blueprint industry: "Audio → intent emphasis"
+        # High audio_energy = urgency → narrow/direct branch
+        if audio_energy > 0.4 and sub_goals:
+            add(f"{sub_goals[0]}")      # most important goal alone
+            add(f"{base_query}")        # already added but reinforces urgency
+
+        # ── INDUSTRY UPGRADE: Image modality branch ───────────────────
+        # High color variance = rich visual → visual description branch
+        # Low variance = structured/technical → precise branch
+        # ── INDUSTRY: Image modality branch ───────────────────────────
+        # image_color_variance numeric — language agnostic
+        # High variance = rich/artistic → Memory Graph goals se context
+        # Low-medium variance = structured → entity-anchored precise
+        # No hardcoded English strings — sirf numeric + real signals
+        if image_color_variance > 50 and sub_goals:
+            # Rich image: top goals Memory Graph se combine karo
+            for goal in sub_goals[:2]:
+                add(f"{goal} {base_query}")
+        elif image_color_variance > 15 and entities:
+            # Structured image: entity-anchored precise branch
+            add(f"{entities[0]} {base_query}")
+
         return branches
 #.............. Phase 2.2 : QUERY GRANULARITY DECISION ..........
 class QueryGranularityDecider:
     """
     Blueprint: "HAR INTENT KE LIYE DECIDE HOTA HAI —
                 Narrow: exact facts, Broad: Landscape, Abstract: Philosophy"
-    Narrow/Broad/Abstract — measure ke 3 ends hain, string labels nahi.
-    scope_score 0.0–1.0 — pure number — Phase 2.3 + 2.4 ye directly use karenge.
+    Narrow/Broad/Abstract — 0.0-1.0 scope_score — labels nahi, pure number.
+    Industry Upgrade: audio_energy + image_color_variance + active_modalities
+                      + thinking_styles_count scope mein factor hote hain.
+    cognitive_profile: billing se — deep_reasoning, use_emergent_concepts.
     """
 
-    def decide(self, branches: list, layer1_bundle: dict, memory_graph) -> list:
+    def decide(
+        self,
+        branches: list,
+        layer1_bundle: dict,
+        memory_graph,
+        cognitive_profile: dict = None   # ADDED — billing access ke liye
+    ) -> list:
+
         DEPTH_INDEX = {
             "shallow": 0, "normal": 1, "moderate": 2,
             "deep": 3, "very_deep": 4, "ultra_deep": 5
         }
 
-        required_depth = layer1_bundle.get("required_depth", "shallow")
-        depth_idx      = DEPTH_INDEX.get(required_depth, 0)
-        depth_score    = depth_idx / (len(DEPTH_INDEX) - 1)  # 0.0–1.0 normalize
-    
-        # Layer 1 Phase 1.2 signals — real power
+        # ── Layer 1 text signals ───────────────────────────────────────
+        required_depth     = layer1_bundle.get("required_depth", "shallow")
+        depth_idx          = DEPTH_INDEX.get(required_depth, 0)
+        depth_score        = depth_idx / (len(DEPTH_INDEX) - 1)  # 0.0-1.0
         is_analytical      = layer1_bundle.get("is_analytical", False)
         has_entity         = layer1_bundle.get("has_entity", False)
         has_verb           = layer1_bundle.get("has_verb", False)
         graph_intent_score = layer1_bundle.get("graph_intent_score", 0.0)
-    
-        # Intent-based scope bias — REAL POWER
-        # is_analytical → abstract scope chahiye (philosophy, theory, causal)
-        # has_entity only → narrow scope (exact facts, definitions)
-        # has_verb only → broad scope (process, landscape)
+
+        # ── Layer 1 multimodal signals ─────────────────────────────────
+        audio_energy         = layer1_bundle.get("audio_energy", 0.0)
+        image_color_variance = layer1_bundle.get("image_color_variance", 0.0)
+        active_modalities    = layer1_bundle.get("active_modalities", 1)
+        thinking_styles      = layer1_bundle.get("thinking_styles_count", 0)
+
+        # ── Billing signals ────────────────────────────────────────────
+        profile        = cognitive_profile or {}
+        deep_reasoning = profile.get("deep_reasoning", False)
+        use_emergent   = profile.get("use_emergent_concepts", False)
+
+        # ── Intent-based scope bias — spaCy computed signals ──────────
+        # is_analytical → abstract scope (causal structure detected)
+        # has_entity only → narrow scope (specific facts needed)
+        # has_verb only → broad scope (process/landscape)
         if is_analytical:
-            intent_bias = 0.3   # abstract end ki taraf push karo
+            intent_bias = 0.3
         elif has_entity and not is_analytical:
-            intent_bias = -0.2  # narrow end ki taraf push karo
+            intent_bias = -0.2
         elif has_verb and not has_entity:
-            intent_bias = 0.1   # broad middle mein raho
+            intent_bias = 0.1
         else:
             intent_bias = 0.0
-    
-        # graph_intent_score — Memory Graph relevant hai to abstract scope zyada useful
+
+        # ── Memory Graph bias ──────────────────────────────────────────
         graph_bias = graph_intent_score * 0.2
-    
+
+        # ── INDUSTRY: Multimodal scope signals ─────────────────────────
+        # High audio_energy = urgency → narrow/focused scope needed
+        # Blueprint industry: urgent audio queries need direct retrieval
+        audio_bias = -0.1 if audio_energy > 0.4 else 0.0
+
+        # High image_color_variance = rich/complex visual → broader scope
+        image_bias = 0.1 if image_color_variance > 50 else (
+                     0.05 if image_color_variance > 15 else 0.0)
+
+        # Multiple modalities = more context needed = broader scope
+        modality_bias = min((active_modalities - 1) * 0.05, 0.15)
+
+        # Multiple thinking styles = complex query = broader scope
+        thinking_bias = min(thinking_styles * 0.03, 0.1)
+
+        # ── Billing scope adjustments ──────────────────────────────────
+        # deep_reasoning = billing says go deeper = push toward abstract
+        deep_bias = 0.1 if deep_reasoning else 0.0
+        # use_emergent = billing says use graph = push toward abstract
+        emergent_bias = 0.05 if use_emergent else 0.0
+
         results = []
         for branch in branches:
             mem_score = 0.0
@@ -4700,18 +5581,33 @@ class QueryGranularityDecider:
                     mem_score = memory_graph.estimate_relevance(branch)
                 except Exception as e:
                     logging.warning(f"[Ph2.2] memory error: {e}")
-    
-            # depth 50% + memory 30% + intent_bias 20% = scope_score
-            # REAL POWER: intent type scope decide karta hai, sirf depth nahi
+
+            # scope_score — all signals combined
+            # depth 40% + memory 25% + intent 20% + multimodal 10% + billing 5%
             scope_score = round(
-                (depth_score * 0.5) + (mem_score * 0.3) + intent_bias + graph_bias,
+                (depth_score   * 0.40) +
+                (mem_score     * 0.25) +
+                intent_bias          +
+                graph_bias           +
+                audio_bias           +
+                image_bias           +
+                modality_bias        +
+                thinking_bias        +
+                deep_bias            +
+                emergent_bias,
                 4
             )
             # 0.0–1.0 clamp
             scope_score = max(0.0, min(1.0, scope_score))
             results.append({"branch": branch, "scope_score": scope_score})
-    
-        logging.info(f"[Ph2.2] scope_scores computed for {len(results)} branches | intent_bias={intent_bias}")
+
+        logging.info(
+            f"[Ph2.2] branches={len(results)} | "
+            f"depth_score={depth_score:.2f} | intent_bias={intent_bias:.2f} | "
+            f"audio_bias={audio_bias:.2f} | image_bias={image_bias:.2f} | "
+            f"modality_bias={modality_bias:.2f} | thinking_bias={thinking_bias:.2f} | "
+            f"deep_bias={deep_bias:.2f}"
+        )
         return results
 
 #.................. Phase 2.3 : DYNAMIC QUERY SHAPE GENERATOR ..........
@@ -4720,9 +5616,10 @@ class QueryShapeGenerator:
     Blueprint: "yahaan actually query forms bante hai —
                 Declaration, Exploratory, Hypothetical, Comparative, Causal.
                 ye phase random nhi hota, decision-based hota hai."
-    Decision = Phase 2.2 ka scope_score.
+    Decision = Phase 2.2 ka scope_score + Layer 1 signals.
     Forms = Memory Graph ke close concepts se emerge karte hain.
-    Koi hardcoded English nahi — language agnostic.
+    Language agnostic — no string match on content.
+    Industry Upgrade: audio_energy (Hypothetical), image_color_variance (Exploratory).
     """
     def generate(
         self,
@@ -4730,70 +5627,89 @@ class QueryShapeGenerator:
         query_embedding: list,
         memory_graph,
         cognitive_profile: dict = None,
-        layer1_bundle: dict = None       # Layer 1 signals ke liye
+        layer1_bundle: dict = None
     ) -> str:
         branch      = branch_item["branch"]
         scope_score = branch_item["scope_score"]
 
-        # Billing gate — FREE/PAID ke liye emergent concepts off
+        # Billing gate — free tier: no enrichment
         if not (cognitive_profile or {}).get("use_emergent_concepts", False):
             return branch
 
-        # Narrow query — already specific, enrichment noise banega
+        # Narrow query — enrichment noise banega
         if scope_score < 0.2 or memory_graph is None or not query_embedding:
             return branch
 
-        # Layer 1 Phase 1.2 signals — real power
+        # Layer 1 signals — real power
         bundle             = layer1_bundle or {}
         is_analytical      = bundle.get("is_analytical", False)
         has_verb           = bundle.get("has_verb", False)
         has_entity         = bundle.get("has_entity", False)
         graph_intent_score = bundle.get("graph_intent_score", 0.0)
+        audio_energy       = bundle.get("audio_energy", 0.0)
+        image_color_variance = bundle.get("image_color_variance", 0.0)
+        thinking_styles    = bundle.get("thinking_styles_count", 0)
 
         try:
-            # scope_score se top_k decide
             top_k = max(1, round(scope_score * 3))
             similar = memory_graph.get_similar_concepts(query_embedding, top_k=top_k)
 
-            # Close concepts — score > 0.5
+            # Score threshold only — no string match on content
+            # Hindi/Sanskrit/Arabic concepts — language agnostic
             close_concepts = [
                 c["concept"] for c in similar
                 if c.get("score", 0) > 0.5
-                and c["concept"].lower() not in branch.lower()
             ]
 
             if not close_concepts:
                 return branch
 
-            # REAL POWER — Query shape Layer 1 signals se decide hoti hai
-            # Blueprint: "Declaration, Exploratory, Hypothetical, Comparative, Causal"
-
-            # Causal shape — is_analytical=True matlab causal structure hai
-            # REAL POWER: analytical query → concepts ko causal angle se connect karo
+            # ── CAUSAL shape ─────────────────────────────────────────
+            # Blueprint: "Causal (Why/How)"
+            # Trigger: is_analytical — spaCy dep_ advcl/mark structure
+            # Real power: causal query → concept ko causal angle se link
             if is_analytical:
                 return f"{branch} {close_concepts[0]}"
 
-            # Comparative shape — Memory Graph strongly activated
-            # REAL POWER: graph relevant → related concepts compare karo
+            # ── COMPARATIVE shape ─────────────────────────────────────
+            # Blueprint: "Comparative"
+            # Trigger: graph strongly activated → related concepts compare
+            # Real power: Memory Graph score > 0.6, 2+ concepts available
             if graph_intent_score > 0.6 and len(close_concepts) >= 2:
-                return f"{branch} {close_concepts[0]} {close_concepts[1]}"            
+                return f"{branch} {close_concepts[0]} {close_concepts[1]}"
 
-            # Exploratory shape — high scope, wide angle
-            # REAL POWER: abstract query → multiple concepts se explore karo
-            if scope_score > 0.7:
+            # ── HYPOTHETICAL shape ────────────────────────────────────
+            # Blueprint: "Hypothetical"
+            # Trigger: audio_energy high = urgency/speculation OR
+            #          multiple thinking styles = complex/uncertain query
+            # Real power: top 2 concepts combine — speculative angle
+            # Industry: voice queries often hypothetical ("what if...")
+            if audio_energy > 0.4 or thinking_styles >= 2:
+                if len(close_concepts) >= 2:
+                    return f"{branch} {close_concepts[0]} {close_concepts[1]}"
+                return f"{branch} {close_concepts[0]}"
+
+            # ── EXPLORATORY shape ─────────────────────────────────────
+            # Blueprint: "Exploratory"
+            # Trigger: high scope OR rich image (visual complexity)
+            # Real power: multiple concepts → wide exploration
+            if scope_score > 0.7 or image_color_variance > 50:
                 return f"{branch} {' '.join(close_concepts[:3])}"
 
-            # Declaration shape — entity present, narrow scope
-            # REAL POWER: factual query → entity pe focused single concept
+            # ── DECLARATION shape ─────────────────────────────────────
+            # Blueprint: "Declaration"
+            # Trigger: entity present + narrow scope = definitive statement
+            # Real power: entity-anchored single concept
             if has_entity and scope_score < 0.5:
                 return f"{branch} {close_concepts[0]}"
 
-            # Procedural shape — verb heavy
-            # REAL POWER: process query → action concept add karo
+            # ── PROCEDURAL shape (verb-first) ─────────────────────────
+            # Not in blueprint explicitly but maps to process queries
+            # Trigger: verb heavy, no entity
             if has_verb and not has_entity:
                 return f"{branch} {close_concepts[0]}"
 
-            # Default — concept add karo
+            # Default
             return f"{branch} {' '.join(close_concepts)}"
 
         except Exception as e:
@@ -4805,11 +5721,11 @@ class QueryShapeGenerator:
 class AbstractionModulator:
     """
     Blueprint: "Same intent ko multiple abstract levels pr query krta hai —
-                Concrete (facts), Conceptual (models), Meta (ethics, philosophy)"
+                Concrete (facts,data), Conceptual (models,theories), Meta (ethics,philosophy)"
     Phase 2.3 ne close concepts liye (concrete form).
-    Phase 2.4 door ke concepts leta hai — graph distance = abstraction level.
-    Blueprint ka "Meta — philosophy" graph mein door ke nodes se aata hai.
-    Koi hardcoded English nahi.
+    Phase 2.4 graph distance se abstraction level decide karta hai.
+    Industry Upgrade: audio_energy (Concrete prefer), image_color_variance (Conceptual).
+    Language agnostic — sirf score ranges, no string match.
     """
 
     def adjust(
@@ -4819,49 +5735,61 @@ class AbstractionModulator:
         query_embedding: list,
         memory_graph,
         cognitive_profile: dict = None,
-        layer1_bundle: dict = None        # Layer 1 signals
+        layer1_bundle: dict = None
     ) -> str:
 
-        # Billing gate
+        # Billing gate — free tier: no abstraction expansion
         if not (cognitive_profile or {}).get("use_emergent_concepts", False):
             return query
 
         if scope_score < 0.5 or memory_graph is None or not query_embedding:
             return query
 
-        # Layer 1 Phase 1.2 signals
-        bundle        = layer1_bundle or {}
-        is_analytical = bundle.get("is_analytical", False)
-        has_entity    = bundle.get("has_entity", False)
-
-        # has_entity + low analytical = Concrete level sufficient
-        # REAL POWER: factual query ko abstract mat karo — noise banega
-        if has_entity and not is_analytical and scope_score < 0.7:
-            return query
+        # Layer 1 signals
+        bundle               = layer1_bundle or {}
+        is_analytical        = bundle.get("is_analytical", False)
+        has_entity           = bundle.get("has_entity", False)
+        audio_energy         = bundle.get("audio_energy", 0.0)
+        image_color_variance = bundle.get("image_color_variance", 0.0)
 
         try:
             similar = memory_graph.get_similar_concepts(query_embedding, top_k=8)
 
-            # ── Conceptual level — scope 0.65–0.8 ──────────────────────────
-            # Medium distance concepts — models, theories angle
-            # REAL POWER: moderate abstract query ko theoretical angle milta hai
-            if 0.65 <= scope_score <= 0.8:
+            # ── CONCRETE level ────────────────────────────────────────
+            # Blueprint: "Concrete (facts, data)"
+            # Trigger: entity present + audio urgent + not analytical
+            # → High-score concepts (score > 0.7) add — entity anchored
+            # Industry: urgent audio = user needs direct facts, not philosophy
+            if has_entity and not is_analytical and (scope_score < 0.7 or audio_energy > 0.4):
+                concrete = [
+                    c["concept"] for c in similar
+                    if c.get("score", 0) > 0.7  # score threshold only — no string match
+                ]
+                if concrete:
+                    return f"{query} {concrete[0]}"
+                return query
+
+            # ── CONCEPTUAL level ───────────────────────────────────────
+            # Blueprint: "Conceptual (models, theories)"
+            # Trigger: scope 0.65-0.8 OR rich image (complex visual = conceptual thinking)
+            # → Medium-distance concepts (0.3-0.5 score range)
+            # Industry: rich image = spatial/structural concept needed
+            if 0.65 <= scope_score <= 0.8 or image_color_variance > 50:
                 conceptual = [
                     c["concept"] for c in similar
                     if 0.3 <= c.get("score", 0) <= 0.5
-                    and c["concept"].lower() not in query.lower()
                 ]
                 if conceptual:
                     return f"{query} {conceptual[0]}"
 
-            # ── Meta level — scope > 0.8 ya is_analytical ──────────────────
-            # Door ke concepts — ethics, philosophy angle
-            # REAL POWER: deep analytical query ko meta/philosophical angle milta hai
+            # ── META level ─────────────────────────────────────────────
+            # Blueprint: "Meta (ethics, philosophy)"
+            # Trigger: scope > 0.8 OR is_analytical (deep causal reasoning)
+            # → Distant concepts (0.15-0.3 score range) — philosophy/ethics
             if scope_score > 0.8 or is_analytical:
                 meta = [
                     c["concept"] for c in similar
                     if 0.15 < c.get("score", 0) < 0.3
-                    and c["concept"].lower() not in query.lower()
                 ]
                 if meta:
                     return f"{query} {meta[0]}"
@@ -4899,44 +5827,74 @@ class QueryBudgetAllocator:
         queries          : Phase 2.5 ka pruned output
         cognitive_profile: billing se aaya — max_docs budget hai
         memory_graph     : Layer 4 hook — priority measure ke liye
+        layer1_bundle    : Layer 1 signals — intent importance ke liye
         Returns: budget ke andar top-priority queries — sorted
         """
+        # Empty fallback — Layer 3 ko crash nahi hona chahiye
+        if not queries:
+            return queries
+
         budget = cognitive_profile.get("max_docs", 6)
 
-        # Layer 1 Phase 1.2 signals — real power
-        bundle             = layer1_bundle or {}
-        is_analytical      = bundle.get("is_analytical", False)
-        graph_intent_score = bundle.get("graph_intent_score", 0.0)
-        deep_reasoning     = cognitive_profile.get("deep_reasoning", False)
+        # Layer 1 signals — real power
+        bundle               = layer1_bundle or {}
+        is_analytical        = bundle.get("is_analytical", False)
+        graph_intent_score   = bundle.get("graph_intent_score", 0.0)
+        audio_energy         = bundle.get("audio_energy", 0.0)        # ADDED
+        active_modalities    = bundle.get("active_modalities", 1)     # ADDED
+        thinking_styles      = bundle.get("thinking_styles_count", 0) # ADDED
+
+        # Billing signals
+        deep_reasoning = cognitive_profile.get("deep_reasoning", False)
 
         def priority_score(q: str) -> float:
             base = 0.5
+
+            # Memory Graph — primary priority signal
+            # Invert: low memory = naya topic = HIGH priority (explore pehle)
+            # Blueprint: "Kaun Pehle?" = unexplored pehle
             if memory_graph is not None:
                 try:
                     mem_score = memory_graph.estimate_relevance(q)
-                    # Invert — low memory = naya = high priority
-                    # Blueprint: "Kaun Pehle?" = unexplored pehle
                     base = 1.0 - mem_score
                 except Exception as e:
                     logging.warning(f"[Ph2.6] memory error: {e}")
 
-            # REAL POWER: analytical query ko extra priority
-            # Blueprint: "intent importance" factor
+            # Blueprint: "intent importance" — analytical query = deeper intent
+            # REAL POWER: spaCy dep_ signal — language agnostic
             if is_analytical:
                 base += 0.2
 
-            # REAL POWER: graph activated queries pehle
+            # Memory Graph strongly activated — graph-related queries pehle
             if graph_intent_score > 0.6:
                 base += 0.15
 
-            # REAL POWER: deep reasoning — unexplored topics zyada priority
+            # deep_reasoning = billing says explore deeply
             if deep_reasoning:
+                base += 0.1
+
+            # ADDED: audio_energy > 0.4 = urgent voice query = highest priority
+            # Blueprint: "intent importance" — urgency = pehle answer do
+            if audio_energy > 0.4:
+                base += 0.25
+
+            # ADDED: active_modalities > 1 = complex multimodal = zyada priority
+            # More modalities = richer context = explore pehle
+            if active_modalities > 1:
+                base += 0.15
+
+            # ADDED: thinking_styles >= 2 = multi-angle complex query = priority boost
+            if thinking_styles >= 2:
                 base += 0.1
 
             return min(base, 1.0)
 
         prioritized = sorted(queries, key=priority_score, reverse=True)
-        logging.info(f"[Ph2.6] budget={budget}, total={len(queries)}, selected={min(budget, len(queries))}")
+        logging.info(
+            f"[Ph2.6] budget={budget} total={len(queries)} "
+            f"selected={min(budget, len(queries))} "
+            f"audio={audio_energy:.2f} modalities={active_modalities}"
+        )
         return prioritized[:budget]
 #............Phase 2.7 : FINAL QUERY BUNDLE OUTPUT..........
 class AdaptiveQueryExpansionEngine:
@@ -4950,12 +5908,12 @@ class AdaptiveQueryExpansionEngine:
     Koi hardcoded English nahi.
     """
 
-    def run(self, question: str,layer1_bundle: dict, cognitive_profile: dict, memory_graph ) -> list:
-        brancher          = IntentQueryBrancher()
+    def run(self, question: str, layer1_bundle: dict, cognitive_profile: dict, memory_graph) -> list:
+        brancher            = IntentQueryBrancher()
         granularity_decider = QueryGranularityDecider()
-        shape_gen         = QueryShapeGenerator()
-        abstraction       = AbstractionModulator()
-        allocator         = QueryBudgetAllocator()
+        shape_gen           = QueryShapeGenerator()
+        abstraction         = AbstractionModulator()
+        allocator           = QueryBudgetAllocator()
 
         # Phase 2.1 — branches
         branches = brancher.branch(
@@ -4966,28 +5924,37 @@ class AdaptiveQueryExpansionEngine:
 
         # Phase 2.2 — scope scores
         query_scope_items = granularity_decider.decide(
-            branches, layer1_bundle, memory_graph
+            branches, layer1_bundle, memory_graph, cognitive_profile
         )
 
         # Phase 2.3 + 2.4 — shape + abstraction
         query_emb = layer1_bundle.get("query_embedding")
+        if query_emb is None:
+            logging.warning("[Ph2.7] query_embedding missing from layer1_bundle — Ph2.3/2.4 skipping Memory Graph")
+
         queries = []
         for item in query_scope_items:
             q = shape_gen.generate(item, query_emb, memory_graph, cognitive_profile, layer1_bundle)
             q = abstraction.adjust(q, item["scope_score"], query_emb, memory_graph, cognitive_profile, layer1_bundle)
             queries.append(q)
 
+        # Guard — agar queries empty ho gayi (edge case)
+        if not queries:
+            logging.warning("[Ph2.7] queries empty after Ph2.3/2.4 — falling back to normalized_query")
+            queries = [layer1_bundle.get("normalized_query", question)]
+
         # Phase 2.5 — prune
-        queries = MemoryAwareQueryPruner().prune(queries, memory_graph, layer1_bundle)
+        queries = MemoryAwareQueryPruner().prune(queries, memory_graph, layer1_bundle, cognitive_profile)
 
         # Phase 2.6 — priority + budget
         queries = allocator.allocate(queries, cognitive_profile, memory_graph, layer1_bundle)
 
-        # Ph 2.8 Trace — billing flag se control
+        # Ph 2.8 Trace — billing flag se control (sirf Jarvis dev mode mein ON)
         if cognitive_profile.get("trace_logging", False):
-            logging.info(f"[TRACE Ph2.1-branches] {branches}")
+            logging.info(f"[TRACE Ph2.1-branches] count={len(branches)}")
             logging.info(f"[TRACE Ph2.2-scope_items] count={len(query_scope_items)}")
             logging.info(f"[TRACE Ph2.3-shape] first_query={queries[0] if queries else 'empty'}")
+            logging.info(f"[TRACE Ph2.4-abstraction] query_emb_present={query_emb is not None}")
             logging.info(f"[TRACE Ph2.6-budget] max_docs={cognitive_profile.get('max_docs', 6)}")
             logging.info(f"[TRACE Ph2.7-final_count] {len(queries)}")
 

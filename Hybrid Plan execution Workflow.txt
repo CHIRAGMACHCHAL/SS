@@ -1,0 +1,60 @@
+## File Padh Li — Plan Poora Clear Hai
+
+Sab kuch yaad hai. Ek line mein bolunga poora picture:
+
+---
+
+### Poora Plan Ek Jagah
+
+**Goal:** Layer 1 se query classify karo → tier + phase + query type combine karo → sahi OpenAI model select karo → API call karo → profit
+
+```
+3 Tiers (abhi sirf yahi release honge)
+│
+├── FREE (₹0, 25q/day)
+│   ├── Primary (0-70%): Light→5-nano | Med/Heavy→5.4-nano
+│   └── Secondary (70-100%): All→5-nano
+│
+├── PAID (₹699, 40q/day)
+│   ├── Primary (0-70%): Light→5-mini | Med/Heavy→5.4-mini
+│   └── Secondary (70-100%): All→5-mini
+│
+└── ULTRA (₹1499, 60q/day)
+    ├── Primary (0-50%): Light→5.4-mini | Med/Heavy→5.4
+    ├── Mid (50-80%): All→5.4-mini
+    └── Final (80-100%): All→5-mini
+
+Query Classification (Layer 1 se already aata hai)
+│
+├── complexity_score compute karo
+│   ├── required_depth → 40% weight
+│   ├── sub_goals count → 30% weight
+│   ├── is_analytical → 20% weight
+│   └── domains + graph → 10% weight
+│
+└── score → light/medium/heavy label
+    ├── score < 0.35 → light
+    ├── score < 0.65 → medium
+    └── score >= 0.65 → heavy
+
+Soft Controls (hidden from user)
+├── Heavy soft cap per tier (3-5 / 6-10 / 10-18)
+├── After cap: same model, reasoning↓ tokens↓
+└── Token limits per tier per query type
+```
+
+---
+
+### Ab Implementation Sequence
+
+Teen files touch karni hain is order mein:
+
+**Step 1 → `llm_engine.py`** — Transformers hatao, OpenAI API lagao
+
+**Step 2 → `billing.py`** — Model routing logic add karo (tier + phase + query type)
+
+**Step 3 → `main.py`** — `compute_complexity_score()` + `classify_query()` add karo, routing se connect karo
+
+---
+
+**Shuru karein? Pehle `llm_engine.py` likhu?**

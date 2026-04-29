@@ -12,7 +12,51 @@ if not DATABASE_URL:
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")  
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")  
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")  
-  
+
+
+
+def get_model_for_user(email: str) -> str:
+    tier = BillingLayer.get_user_tier(email)
+
+    from usage.usage_manager import get_usage
+
+    usage = get_usage(email)
+    config = BillingLayer.generate_config(email)
+    limit = config["rate_limit"]
+
+    # Unlimited users
+    if limit is None:
+        return "gpt-5.4"
+
+    # ===== PRECOMPUTED THRESHOLDS =====
+    t70 = int(limit * 0.7)
+    t50 = int(limit * 0.5)
+    t80 = int(limit * 0.8)
+
+    # ===== FREE =====
+    if tier == "free":
+        if usage < t70:
+            return "gpt-5.4-nano"
+        else:
+            return "gpt-5-nano"
+
+    # ===== PAID =====
+    elif tier == "paid":
+        if usage < t70:
+            return "gpt-5.4-mini"
+        else:
+            return "gpt-5-mini"
+
+    # ===== ULTRA =====
+    elif tier == "ultra_paid":
+        if usage < t50:
+            return "gpt-5.4"
+        elif usage < t80:
+            return "gpt-5.4-mini"
+        else:
+            return "gpt-5-mini"
+
+    return "gpt-5.4-nano"  
 class BillingLayer:  
     """  
     Production Billing Layer - 6 Tiers System  
@@ -354,7 +398,8 @@ class BillingLayer:
                 "use_emergent_concepts": True,  
                 "query_complexity": "high",  
                 "allow_self_training": False,  
-                "max_tokens": 12000,  
+                # "max_tokens": 12000,
+                "max_tokens": 3000,  
                 "collection": "public_core",  
                 "allowed_tools": ["web_search", "code_execution"],  
                 "private_memory": False,  
@@ -362,7 +407,7 @@ class BillingLayer:
                 "unlimited_mode": False,  
                 "conversation_history_limit": 20, 
                 "trace_logging": False, 
-                "rate_limit": 200  # requests per day  
+                "rate_limit": 60  # requests per day  
             }  
   
         # ========== TIER 2: PAID (INDIVIDUAL) ==========  
@@ -404,7 +449,8 @@ class BillingLayer:
                 "use_emergent_concepts": True,  
                 "query_complexity": "normal",  
                 "allow_self_training": False,  
-                "max_tokens": 6000,  
+                # "max_tokens": 6000,
+                "max_tokens": 1500,  
                 "collection": "public_core",  
                 "allowed_tools": ["web_search"],  
                 "private_memory": False,  
@@ -412,7 +458,7 @@ class BillingLayer:
                 "unlimited_mode": False,  
                 "conversation_history_limit": 10,  
                 "trace_logging": False,
-                "rate_limit": 100  # requests per day  
+                "rate_limit": 40  # requests per day  
             }  
   
         # ========== TIER 1: FREE (INDIVIDUAL) ==========  
@@ -454,7 +500,8 @@ class BillingLayer:
                 "use_emergent_concepts": False,  
                 "query_complexity": "low",    
                 "allow_self_training": False,  
-                "max_tokens": 3000,  
+                # "max_tokens": 3000,
+                "max_tokens": 500,  
                 "collection": "public_core",  
                 "allowed_tools": [],  
                 "private_memory": False,  
@@ -462,7 +509,97 @@ class BillingLayer:
                 "unlimited_mode": False,  
                 "conversation_history_limit": 10, 
                 "trace_logging": False, 
-                "rate_limit": 50  # requests per day  
+                "rate_limit": 25  # requests per day  
             }
 
             
+# 🧠 STEP 7 — SAFETY (warna loss hoga)
+# Add this:
+# ❌ Hard stop:
+# if monthly_usage > limit:
+#     block or downgrade model
+# ✅ Soft throttle:
+# after 70% usage:
+#     switch to cheaper model            
+
+
+
+
+
+# 🧮 Assume:
+# Paid user:
+# avg 40 queries/day use karega (not 80)
+# 40 × 30 = 1200 queries
+# cost ≈ ₹600
+# revenue = ₹199
+
+# 👉 loss? ❌
+
+# Real behavior:
+
+# 👉 80% users:
+
+# 10–30 queries/day use karte hain
+# avg = 20 queries/day
+# monthly = 600 queries
+
+# cost ≈ ₹300
+# revenue = ₹199
+
+# 👉 slight loss per heavy user
+# 👉 but overall profit due to:
+
+# 🔥 Hidden profit drivers
+# 1. Low usage users
+# 50% users use <10 queries/day
+# 👉 high profit
+# 2. Upgrade funnel
+# paid → ultra
+# 3. Free users convert
+# 🚀 STEP 5 — ULTIMATE PROFIT TRICK (important)
+# Dynamic cost control
+
+# 👉 Same tier me bhi:
+
+# if simple query:
+#     use nano
+
+# if medium:
+#     use mini
+
+# if complex:
+#     use full
+
+# 👉 Isse:
+
+# cost 30–50% reduce
+# profit double
+# ⚠️ STEP 6 — LIMITS TUNING (final)
+# Replace this in your code:
+# FREE:
+# rate_limit = 20
+
+# PAID:
+# rate_limit = 80
+
+# ULTRA:
+# rate_limit = 150
+# Token control add karo (VERY IMPORTANT)
+# max_tokens_per_response:
+
+# free = 500
+# paid = 1500
+# ultra = 3000
+
+
+# 🔥 Ek pro-level advice
+
+# 👉 Agar tum ye add kar do:
+
+# “Top-up credits” system
+
+# Example:
+
+# ₹50 = extra 100 queries
+
+# 👉 Profit aur stable ho jayega
