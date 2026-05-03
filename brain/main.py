@@ -339,7 +339,8 @@ class Phase1_0_SignalCaptureEngine:
 
                 # "has_vision": any(f.get("content_type", "").startswith(("image/", "video/")) for f in files) if files else False,
                 "has_vision": (signal_type in (SignalType.IMAGE, SignalType.VIDEO)) or (bool(files) and any(f.get("content_type","").startswith(("image/","video/")) for f in files)),
-                "has_text": isinstance(headers.get("content-type"), str) and headers["content-type"].startswith("text/") if headers else True,
+                # "has_text": isinstance(headers.get("content-type"), str) and headers["content-type"].startswith("text/") if headers else True,
+                "has_text": isinstance(raw_data, str) and len(raw_data.strip()) > 0 if raw_data is not None else False,
                 "has_multimodal": bool(files) and len(files) > 0
             },
             "original_format": source_fmt,
@@ -354,7 +355,16 @@ def create_signal_capture_engine() -> Phase1_0_SignalCaptureEngine:
     return Phase1_0_SignalCaptureEngine()
 
 # 1. Initialize Engine
-signal_engine = Phase1_0_SignalCaptureEngine()    
+signal_engine = Phase1_0_SignalCaptureEngine()  
+
+#----------------
+_signal_engine: Optional[Phase1_0_SignalCaptureEngine] = None
+
+def get_signal_engine() -> Phase1_0_SignalCaptureEngine:
+    global _signal_engine
+    if _signal_engine is None:
+        _signal_engine = Phase1_0_SignalCaptureEngine()
+    return _signal_engine
 
 
 # ════════════════════════════════════════════════════════════════
@@ -4731,7 +4741,8 @@ class IntentDecompositionEngine:
 
         # Capture user query with all modalities and metadata
         user_email = kwargs.get("user_email", "anonymous@example.com")
-        signal_data = signal_engine.capture(
+        signal_data = get_signal_engine().capture(
+        # signal_data = signal_engine.capture(
             raw_input=user_query,
             user_email=user_email,
             content_type=kwargs.get("content_type"),
