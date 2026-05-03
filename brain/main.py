@@ -225,8 +225,28 @@ class Phase1_0_SignalCaptureEngine:
 
         # Priority 3: Structural Fallback (Zero Interpretation)
         if isinstance(data, str):
-            if data.strip().startswith(('def ', 'class ', 'import ', 'from ', 'function ', 'const ')):
+            # if data.strip().startswith(('def ', 'class ', 'import ', 'from ', 'function ', 'const ')):
+            #     return SignalType.CODE, 'text/plain'
+            CODE_INDICATORS = (
+                # Python
+                'def ', 'class ', 'import ', 'from ',
+                # JS/TS
+                'function ', 'const ', 'let ', 'var ', 'async ',
+                # Systems
+                '#include', 'fn ', 'package ', 'pub fn',
+                # Shell
+                '#!/', 'echo ',
+                # Java/C#
+                'public class', 'private ', 'void ',
+                # Go
+                'func ', 'package main',
+                # Haskell/Elixir
+                'module ', 'defmodule ',
+            )
+            stripped = data.strip()
+            if any(stripped.startswith(indicator) for indicator in CODE_INDICATORS):
                 return SignalType.CODE, 'text/plain'
+            #---------------------------
             return SignalType.TEXT, 'text/plain'
         elif isinstance(data, (dict, list)):
             return SignalType.DATA, 'application/json'
@@ -260,11 +280,17 @@ class Phase1_0_SignalCaptureEngine:
             return len(data)
         if isinstance(data, (dict, list)):
             # Safe approximate for JSON/structured payloads
-            return len(repr(data).encode('utf-8'))
+            try:
+                return len(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+            except (TypeError, ValueError):
+                return len(repr(data).encode('utf-8'))  # safe fallback only
+
         return sys.getsizeof(data)
     
     def _detect_query_format(self, content_type: Optional[str], has_files: bool, is_bytes: bool) -> QueryFormat:
-        if has_files: return QueryFormat.MULTIPART
+        # if has_files: return QueryFormat.MULTIPART
+        if has_files: return QueryFormat.FILE_UPLOAD  # dedicated file upload
+        if content_type and content_type.startswith("multipart/"): return QueryFormat.MULTIPART  # form with files
         if content_type:
             if content_type.startswith("application/json"): return QueryFormat.JSON_API
             if content_type.startswith("multipart/"): return QueryFormat.MULTIPART
@@ -307,8 +333,11 @@ class Phase1_0_SignalCaptureEngine:
                 "locale": headers.get("x-locale") if headers else None
             },
             "modality_info": {
-                "has_voice": any(f.get("content_type", "").startswith("audio/") for f in files) if files else False,
-                "has_vision": any(f.get("content_type", "").startswith(("image/", "video/")) for f in files) if files else False,
+                # "has_voice": any(f.get("content_type", "").startswith("audio/") for f in files) if files else False,
+                "has_voice": (signal_type == SignalType.VOICE) or (bool(files) and any(f.get("content_type","").startswith("audio/") for f in files)),
+
+                # "has_vision": any(f.get("content_type", "").startswith(("image/", "video/")) for f in files) if files else False,
+                "has_vision": (signal_type in (SignalType.IMAGE, SignalType.VIDEO)) or (bool(files) and any(f.get("content_type","").startswith(("image/","video/")) for f in files)),
                 "has_text": isinstance(headers.get("content-type"), str) and headers["content-type"].startswith("text/") if headers else True,
                 "has_multimodal": bool(files) and len(files) > 0
             },
@@ -1282,7 +1311,7 @@ class Phase1_1_NormalizationEngine:
 _PHASE1_1 = Phase1_1_NormalizationEngine()
 
 # ════════════════════════════════════
-# PHASE 1.5 — Validation Layer (NEW)
+# PHASE 1.01 — Validation Layer (NEW)
 # Blueprint: Real enforcement of billing limits
 # Industry: Production-grade access control
 # ════════════════════════════════════
