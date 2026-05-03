@@ -76,7 +76,9 @@ class BillingLayer:
             'context_window_tokens': 32000,
             'image_limit_mb': 5,
             'image_count_per_day': 5,
-            'max_goals': 2
+            'max_goals': 2,
+            'ocr_enabled': False,        # ❌ Free tier me OCR nahi
+            'asr_enabled': False         # ❌ Free tier me ASR nahi
         },
         'paid': {
             'modalities': ['text', 'image', 'document', 'code', 'audio', 'data'],
@@ -88,7 +90,9 @@ class BillingLayer:
             'image_limit_mb': 20,
             'image_count_per_day': 20,
             'audio_limit_mb': 50,
-            'max_goals': 5
+            'max_goals': 5,
+            'ocr_enabled': True,         # ✅ Paid tier me basic OCR
+            'asr_enabled': False         # ❌ Paid tier me ASR nahi
         },
         'ultra_paid': {
             'modalities': ['text', 'image', 'document', 'code', 'audio', 'data', 'voice'],
@@ -101,7 +105,9 @@ class BillingLayer:
             'image_count_per_day': 50,
             'audio_limit_mb': 100,
             'voice_limit_mb': 50,
-            'max_goals': 8
+            'max_goals': 8,
+            'ocr_enabled': True,         # ✅ Full OCR
+            'asr_enabled': True,         # ✅ Basic ASR enabled
         },
         'business_small': {
             'modalities': ['text', 'image', 'document', 'code', 'audio', 'data', 'voice', 'video'],
@@ -115,7 +121,9 @@ class BillingLayer:
             'audio_limit_mb': 200,
             'voice_limit_mb': 100,
             'video_limit_mb': 500,
-            'max_goals': 12
+            'max_goals': 12,
+            'ocr_enabled': True,         # ✅ Full OCR
+            'asr_enabled': True,         # ✅ Full ASR
         },
         'enterprise': {
             'modalities': ['text', 'image', 'document', 'code', 'audio', 'data', 'voice', 'video', 'binary'],
@@ -130,7 +138,9 @@ class BillingLayer:
             'voice_limit_mb': 200,
             'video_limit_mb': 1024,
             'binary_limit_mb': 1024,
-            'max_goals': 20
+            'max_goals': 20,
+            'ocr_enabled': True,         # ✅ Full OCR
+            'asr_enabled': True,         # ✅ Full ASR
         },
         'jarvis': {
             'modalities': ['text', 'image', 'document', 'code', 'audio', 'data', 'voice', 'video', 'binary', 'multimodal'],
@@ -145,7 +155,9 @@ class BillingLayer:
             'voice_limit_mb': 500,
             'video_limit_mb': 2048,
             'binary_limit_mb': 2048,
-            'max_goals': -1  # Unlimited
+            'max_goals': -1,  # Unlimited
+            'ocr_enabled': True,         # ✅ Full Power
+            'asr_enabled': True,         # ✅ Full Power
         }
     }  
   

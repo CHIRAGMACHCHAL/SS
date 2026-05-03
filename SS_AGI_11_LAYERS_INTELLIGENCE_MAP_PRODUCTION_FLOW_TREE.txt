@@ -19,10 +19,14 @@ vedic-agi/                      ← yeh root hai (GitHub pe yahi repo hai)
 │   └── storage.py
 |   └── graph_sync.py
 |   └── conversation_memory.py
+|   └── ingestion.py
+|   └── vector_storage.py
 ├── tools/                      ← Layer 9: Tool/Agency Layer
 │   └── tools.py
 ├── monitoring/                 ← Layer 10: Monitoring & Logging
 │   └── monitoring.py
+├── usage
+|   └── usage_manager.py
 ├── deployment/                 ← Layer 11: Deployment & Scaling
 │   ├── Dockerfile
 │   ├── docker-compose.yml
