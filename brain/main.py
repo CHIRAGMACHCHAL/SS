@@ -145,7 +145,7 @@ class Phase1_0_SignalCaptureEngine:
 
 
             # 6. Build Rich Industry Metadata (Preserved from PerfectPhase1_0)
-            metadata = self._build_rich_metadata(headers, session_id, source_format, size_bytes, files)
+            metadata = self._build_rich_metadata(headers, session_id, source_format, size_bytes, signal_type, files)
 
             # Extract explicit fields for direct downstream access
             _session_id = session_id or (headers.get("x-session-id") if headers else None)
@@ -289,9 +289,10 @@ class Phase1_0_SignalCaptureEngine:
     
     def _detect_query_format(self, content_type: Optional[str], has_files: bool, is_bytes: bool) -> QueryFormat:
         # if has_files: return QueryFormat.MULTIPART
-        if has_files: return QueryFormat.FILE_UPLOAD  # dedicated file upload
-        if content_type and content_type.startswith("multipart/"): return QueryFormat.MULTIPART  # form with files
-        if content_type:
+        if has_files:
+            return QueryFormat.FILE_UPLOAD  # dedicated file upload
+        if content_type and content_type.startswith("multipart/"):
+            return QueryFormat.MULTIPART  # form with files        if content_type:
             if content_type.startswith("application/json"): return QueryFormat.JSON_API
             if content_type.startswith("multipart/"): return QueryFormat.MULTIPART
             if content_type.startswith("application/x-www-form-urlencoded"): return QueryFormat.FORM_DATA
