@@ -255,7 +255,7 @@ class Phase1_0_SignalCaptureEngine:
         
         return SignalType.TEXT, 'text/plain'
 
-    def _map_content_type(self, ct: str) -> SignalType:
+    def _map_content_type(self, ct: str) -> SignalType:   
         """Map standard MIME to internal SignalType"""
         if ct.startswith('text/'): return SignalType.TEXT
         if ct.startswith('image/'): return SignalType.IMAGE
