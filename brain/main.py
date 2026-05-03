@@ -284,7 +284,7 @@ class Phase1_0_SignalCaptureEngine:
                 return len(json.dumps(data, ensure_ascii=False).encode('utf-8'))
             except (TypeError, ValueError):
                 return len(repr(data).encode('utf-8'))  # safe fallback only
-
+  
         return sys.getsizeof(data)
     
     def _detect_query_format(self, content_type: Optional[str], has_files: bool, is_bytes: bool) -> QueryFormat:
